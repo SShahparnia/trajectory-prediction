@@ -52,6 +52,24 @@ def parse_args():
         default="results/pointcloud_eda",
         help="Output directory",
     )
+    parser.add_argument(
+        "--timeline-frames",
+        type=int,
+        default=12,
+        help="Number of frames to combine in one 3D timeline image",
+    )
+    parser.add_argument(
+        "--timeline-point-cap",
+        type=int,
+        default=120000,
+        help="Max total points used in combined 3D timeline plot",
+    )
+    parser.add_argument(
+        "--timeline-sequence",
+        type=str,
+        default="",
+        help="Optional sequence name. Empty = use first available sequence.",
+    )
     return parser.parse_args()
 
 
@@ -107,6 +125,78 @@ def save_bev_plot(points: np.ndarray, path: str, title: str):
     plt.tight_layout()
     plt.savefig(path, dpi=150)
     plt.close()
+
+
+def save_timeline_3d_plot(
+    infos: List[Dict],
+    processed_root: str,
+    out_path: str,
+    timeline_frames: int,
+    timeline_point_cap: int,
+    sequence_override: str,
+):
+    sequence = sequence_override
+    if not sequence:
+        for info in infos:
+            sequence = info.get("point_cloud", {}).get("lidar_sequence", "")
+            if sequence:
+                break
+    if not sequence:
+        return False, "No sequence found in infos"
+
+    # Keep only frames from a single sequence so the time progression is meaningful.
+    seq_infos = [
+        i for i in infos if i.get("point_cloud", {}).get("lidar_sequence", "") == sequence
+    ]
+    if not seq_infos:
+        return False, f"Sequence not found: {sequence}"
+
+    seq_infos = sorted(seq_infos, key=lambda x: int(x.get("point_cloud", {}).get("sample_idx", 0)))
+    seq_infos = seq_infos[:timeline_frames]
+
+    xs, ys, zs, ts = [], [], [], []
+    loaded = 0
+    for t, info in enumerate(seq_infos):
+        npy_path = locate_pointcloud_file(info, processed_root)
+        if not npy_path or not os.path.exists(npy_path):
+            continue
+        points = np.load(npy_path)
+        xyz = points[:, :3]
+        if xyz.shape[0] > 12000:
+            idx = np.random.choice(xyz.shape[0], 12000, replace=False)
+            xyz = xyz[idx]
+        xs.append(xyz[:, 0])
+        ys.append(xyz[:, 1])
+        zs.append(xyz[:, 2])
+        ts.append(np.full(xyz.shape[0], t))
+        loaded += 1
+
+    if loaded == 0:
+        return False, f"No frame files loaded for sequence: {sequence}"
+
+    x = np.concatenate(xs)
+    y = np.concatenate(ys)
+    z = np.concatenate(zs)
+    t = np.concatenate(ts)
+
+    if x.shape[0] > timeline_point_cap:
+        idx = np.random.choice(x.shape[0], timeline_point_cap, replace=False)
+        x, y, z, t = x[idx], y[idx], z[idx], t[idx]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+    sc = ax.scatter(x, y, z, c=t, cmap="plasma", s=0.3, alpha=0.5)
+    cb = fig.colorbar(sc, ax=ax, pad=0.1)
+    cb.set_label("time step (frame order)")
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_zlabel("z (m)")
+    ax.set_title(f"3D Point Cloud Timeline - {sequence} ({loaded} frames)")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=180)
+    plt.close(fig)
+
+    return True, sequence
 
 
 def main():
@@ -171,6 +261,16 @@ def main():
         plt.savefig(os.path.join(args.out_dir, "mean_intensity_per_frame_hist.png"), dpi=140)
         plt.close()
 
+    timeline_path = os.path.join(args.out_dir, "pointcloud_timeline_3d.png")
+    ok, timeline_info = save_timeline_3d_plot(
+        infos=subset,
+        processed_root=args.processed_root,
+        out_path=timeline_path,
+        timeline_frames=args.timeline_frames,
+        timeline_point_cap=args.timeline_point_cap,
+        sequence_override=args.timeline_sequence,
+    )
+
     print("\n=== POINT CLOUD EDA SUMMARY ===")
     print(f"Infos file: {args.infos}")
     print(f"Processed root: {args.processed_root}")
@@ -186,6 +286,10 @@ def main():
     if "intensity_mean" in df.columns and df["intensity_mean"].notna().any():
         print(" - mean_intensity_per_frame_hist.png")
     print(" - bev_samples/*.png")
+    if ok:
+        print(f" - pointcloud_timeline_3d.png (sequence: {timeline_info})")
+    else:
+        print(f" - timeline plot skipped: {timeline_info}")
 
 
 if __name__ == "__main__":

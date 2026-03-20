@@ -1,1 +1,10 @@
-numpy pandas torch tensorflow scikit-learn matplotlib jupyter pytest tqdm h5py
+numpy
+pandas
+torch
+tensorflow
+scikit-learn
+matplotlib
+jupyter
+pytest
+tqdm
+h5py
