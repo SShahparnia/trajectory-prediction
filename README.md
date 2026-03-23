@@ -136,6 +136,8 @@ python EDA_pointcloud.py \
   --processed-root /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0 \
   --max-samples 200 \
   --plot-samples 5 \
+  --plot-3d-samples 3 \
+  --3d-point-cap 100000 \
   --timeline-frames 16 \
   --out-dir results/pointcloud_eda_train_200
 ```
@@ -144,6 +146,17 @@ Outputs include:
 - per-frame point stats CSV
 - BEV samples
 - combined timeline image: `pointcloud_timeline_3d.png`
+- optional **single-scan 3D** images in `lidar_3d_samples/` when you pass `--plot-3d-samples N` (one LiDAR frame as x–y–z scatter, colored by height)
+- **`bev_samples/`** = **true top-down map**: 2D scatter of **x vs y** (height **z** only affects color)
+- add **`--extra-ortho-views`** with `--plot-3d-samples` to also get **`lidar3d_*_view_top.png`** (camera above, looking down) and **`lidar3d_*_view_bottom.png`** (camera below, looking up)
+
+**Longer 3D timelines (more than ~16 frames):**
+
+- Set `--timeline-frames` to any count you want (e.g. `60`, `120`).
+- Raise `--timeline-point-cap` if the plot looks too sparse (more frames × fewer points per color).
+- By default the timeline only sees the first `--max-samples` infos rows, so a long run may need either a larger `--max-samples` or **`--timeline-scan-full-infos`** so the timeline uses the full pickle while CSV/BEV still use a modest `--max-samples`.
+- Use **`--timeline-frames 0`** (or `-1`) to include **all** frames of the chosen sequence present in that infos list.
+- Pin the segment with **`--timeline-sequence segment-..._with_camera_labels`**.
 
 ---
 
