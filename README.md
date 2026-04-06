@@ -29,7 +29,13 @@ Top-level scripts:
 Output folders:
 - `results/eda_*`
 - `results/pointcloud_eda*`
-- `results/train_lstm_baseline*`
+- `results/experiments/<run_tag>/` (canonical train/val/test pipeline output)
+
+Slurm:
+- `slurm/submit_stage1_pipeline.sh`: submit train + val/test eval pipeline
+- `slurm/train_stage1_lstm.sbatch`: Stage 1 train job
+- `slurm/eval_checkpoint.sbatch`: checkpoint evaluation job
+- `slurm/pipeline_defaults.env`: shared defaults
 
 ---
 
@@ -204,39 +210,17 @@ Prints:
 
 ## Suggested HPC Workflow
 
-1. Develop/debug on login node with small settings (`max-windows`, `max-samples` low).
-2. Run full training via scheduled job for heavier runs.
-3. Save outputs under `results/` with experiment-specific folder names.
+1. Develop/debug with small settings (`max-windows`, `max-samples` low).
+2. Submit full Stage 1 pipeline (train + val + test) via Slurm.
+3. Keep each run in `results/experiments/<run_tag>/`.
 
-Example batch script (adjust partition/account to your cluster):
-
-```bash
-#!/bin/bash
-#SBATCH --job-name=traj-lstm
-#SBATCH --output=logs/train_lstm_%j.log
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --time=08:00:00
-
-cd /home/017264195/trajectory-prediction
-source .venv/bin/activate
-
-python train/train_lstm_baseline.py \
-  --infos /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0_infos_train.pkl \
-  --past-len 10 \
-  --future-len 20 \
-  --max-windows 50000 \
-  --epochs 20 \
-  --batch-size 256 \
-  --out-dir results/train_lstm_baseline_full
-```
-
-Submit with:
+Preferred path:
 
 ```bash
-sbatch <your_script>.sh
+./slurm/submit_stage1_pipeline.sh
 ```
+
+Details and overrides are documented in `slurm/README.md`.
 
 ---
 

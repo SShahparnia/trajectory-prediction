@@ -1,10 +1,11 @@
 import argparse
+import json
 import os
 import sys
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
@@ -27,6 +28,12 @@ def parse_args():
     p.add_argument("--future-len", type=int, default=20)
     p.add_argument("--max-windows", type=int, default=6000)
     p.add_argument("--batch-size", type=int, default=256)
+    p.add_argument(
+        "--metrics-out",
+        type=str,
+        default="",
+        help="Optional path to save ADE/FDE JSON output.",
+    )
     return p.parse_args()
 
 
@@ -39,12 +46,7 @@ def main():
         max_windows=args.max_windows,
     )
     ds = TrajectoryDataset(x, y)
-    n_train = int(0.8 * len(ds))
-    n_val = len(ds) - n_train
-    _, val_ds = random_split(
-        ds, [n_train, n_val], generator=torch.Generator().manual_seed(42)
-    )
-    loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
+    loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False)
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     hidden_dim = ckpt.get("args", {}).get("hidden_dim", 128)
@@ -61,8 +63,29 @@ def main():
 
     pred = np.concatenate(preds, axis=0)
     tgt = np.concatenate(tgts, axis=0)
-    print(f"ADE: {ade(pred, tgt):.6f}")
-    print(f"FDE: {fde(pred, tgt):.6f}")
+    ade_v = float(ade(pred, tgt))
+    fde_v = float(fde(pred, tgt))
+    print(f"ADE: {ade_v:.6f}")
+    print(f"FDE: {fde_v:.6f}")
+    print(f"samples: {len(ds)}")
+
+    if args.metrics_out:
+        out = {
+            "checkpoint": args.checkpoint,
+            "infos": args.infos,
+            "past_len": args.past_len,
+            "future_len": args.future_len,
+            "max_windows": args.max_windows,
+            "samples": len(ds),
+            "ADE": ade_v,
+            "FDE": fde_v,
+        }
+        out_dir = os.path.dirname(args.metrics_out)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(args.metrics_out, "w") as f:
+            json.dump(out, f, indent=2)
+        print(f"saved metrics: {args.metrics_out}")
 
 
 if __name__ == "__main__":

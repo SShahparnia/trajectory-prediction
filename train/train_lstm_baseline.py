@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 
@@ -25,10 +26,23 @@ def parse_args():
     p.add_argument("--past-len", type=int, default=10)
     p.add_argument("--future-len", type=int, default=20)
     p.add_argument("--max-windows", type=int, default=12000)
+    p.add_argument(
+        "--val-infos",
+        type=str,
+        default="",
+        help="Optional explicit validation infos pickle. If empty, uses random 80/20 split.",
+    )
+    p.add_argument(
+        "--val-max-windows",
+        type=int,
+        default=6000,
+        help="Max validation windows when --val-infos is set.",
+    )
     p.add_argument("--epochs", type=int, default=6)
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--hidden-dim", type=int, default=128)
+    p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out-dir", type=str, default="results/train_lstm_baseline")
     return p.parse_args()
 
@@ -36,6 +50,8 @@ def parse_args():
 def main():
     args = parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     x, y = build_xy_windows(
         infos_path=args.infos,
@@ -43,13 +59,25 @@ def main():
         future_len=args.future_len,
         max_windows=args.max_windows,
     )
-    ds = TrajectoryDataset(x, y)
+    train_ds = TrajectoryDataset(x, y)
 
-    n_train = int(0.8 * len(ds))
-    n_val = len(ds) - n_train
-    train_ds, val_ds = random_split(
-        ds, [n_train, n_val], generator=torch.Generator().manual_seed(42)
-    )
+    if args.val_infos:
+        x_val, y_val = build_xy_windows(
+            infos_path=args.val_infos,
+            past_len=args.past_len,
+            future_len=args.future_len,
+            max_windows=args.val_max_windows,
+        )
+        val_ds = TrajectoryDataset(x_val, y_val)
+        split_mode = "explicit_val_infos"
+    else:
+        n_train = int(0.8 * len(train_ds))
+        n_val = len(train_ds) - n_train
+        train_ds, val_ds = random_split(
+            train_ds, [n_train, n_val], generator=torch.Generator().manual_seed(args.seed)
+        )
+        split_mode = "random_80_20"
+
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
 
@@ -130,7 +158,21 @@ def main():
 
     print(f"saved checkpoint: {os.path.join(args.out_dir, 'best_model.pt')}")
     print(f"saved history: {history_path}")
-    print(f"dataset windows: {len(ds)}")
+    print(f"train windows: {len(train_ds)}")
+    print(f"val windows: {len(val_ds)}")
+    print(f"split mode: {split_mode}")
+
+    run_info = {
+        "args": vars(args),
+        "split_mode": split_mode,
+        "train_windows": len(train_ds),
+        "val_windows": len(val_ds),
+        "best_val_loss": float(best_val),
+    }
+    run_info_path = os.path.join(args.out_dir, "run_info.json")
+    with open(run_info_path, "w") as f:
+        json.dump(run_info, f, indent=2)
+    print(f"saved run info: {run_info_path}")
 
 
 if __name__ == "__main__":

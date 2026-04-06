@@ -28,13 +28,27 @@ We are building **machine learning models for motion forecasting**: given a shor
 
 1. **Baseline:** Single-agent model (LSTM or Transformer encoder) on past motion only.  
 2. **Multi-agent:** Incorporate nearby agents' positions/velocities and interaction-aware structure.  
-3. **Map-aware:** Add lane/boundary and map features so predictions align with drivable space.
+3. **Map-aware (last):** Add lane/boundary and map features so predictions align with drivable space. We treat this as the **final stage**, contingent on **applicable supplementary data** (e.g. Motion map features from TFRecords, or a LiDAR-derived geometric prior if vector maps remain unavailable).
 
 **Evaluation:** We plan to use **Average Displacement Error (ADE)** and **Final Displacement Error (FDE)** per agent type (vehicle, pedestrian, cyclist), plus qualitative trajectory-map visualizations.
 
 ---
 
-## 2. Dataset Investigation and Analysis So Far
+## 2. Dataset & Preprocessing Progress
+
+**Source:** **Waymo Open Dataset** on HPC at `/scratch/lts-data/cmpe249-fa22/Waymo132`: **TFRecords** (training/validation shards), **preprocessed LiDAR** as **`.npy`** under `waymo_processed_data_v0_5_0/`, and **metadata** in **`.pkl`** info lists. Locating the canonical mirror required **tracing nested folder trees** (TFRecords, processed segments, `trainall/`, `ImageSets/`, original `*_infos_train.pkl` / `*_infos_val.pkl`). On **NFS**, **`du` over the full tree could hang**, so we used **`find`-based inventories** (and optional targeted `du`) to confirm scale—**~1k** TFRecords, **tens of thousands** of `.npy` files, and hundreds of ancillary pickles—not a stub copy.
+
+**EDA findings (beyond “3,769 training rows”):** The **original course train pickle** has **3,769** frames; the **original val pickle** adds **992** more. Together they define **4,761** processed frames with LiDAR pointers and annotations. Aggregated EDA (train-focused v1; expanded pass ongoing) shows on the order of **~200,000** LiDAR points per frame (typical), **~25** objects per frame (sampled), **strong class imbalance** (vehicles—and often signage in 3D labels—dominate vulnerable road users), and **high variability** in point counts and intensity across frames (density and return strength are not uniform).
+
+**Repository vs scratch:** **`data/raw/waymo132`** is a **symlink** to the scratch tree—**no duplicate** multi-terabyte raw data in the repo. We **merged** train+val infos and **re-split** all **4,761** frames **by `lidar_sequence`** into **70% / 15% / 15%** train/validation/test (`data/infos_train.pkl`, `infos_val.pkl`, `infos_test.pkl`, **`manifest.json`**; `scripts/build_expanded_data_splits.py`). We are **extending EDA** to this **expanded** split so tables and plots match the frame universe we train on.
+
+**Completed preprocessing:** Python virtual environment and **`requirements.txt`**, **HPC access validation** and documented paths, **trajectory window construction** (sequence-aligned past/future pairs, **local** coordinate normalization in `waymo_windows.py`), **80/20** random train/val inside `train_lstm_baseline.py`, **feature-engineering** scaffolding (`trajectory_features.py`), point-cloud **subsampling** for visualization, and **split/inventory** tooling (`count_dataset_entries.py`, `data/README.txt`).
+
+**Pending tasks:** Official **Waymo Motion** TFRecord decoding (or a documented decision to stay on processed tracking-style xy), **full benchmark alignment** with motion splits where applicable, **training-time** imbalance handling beyond reporting per-class metrics, and **map** feature integration **as the last step** when/if we can source **supplementary** lane or map-aligned data (see stage 3 above).
+
+---
+
+## 3. Dataset Investigation and Analysis So Far
 
 ### Dataset source
 
@@ -109,12 +123,12 @@ These go beyond "download only": they quantify **scale**, **class skew**, **dens
 
 ---
 
-## 3. Preprocessing Completed So Far
+## 4. Preprocessing Completed So Far
 
 We have **not** yet completed a full Motion-Dataset-specific pipeline (e.g. official **tfrecord -> tf.example** decoding with Waymo's motion protobufs on this environment). **Completed preprocessing and preparation** includes:
 
 1. **Environment:** Python virtual environment and pinned third-party stack in `requirements.txt` (NumPy, Pandas, PyTorch, TensorFlow, scikit-learn, Matplotlib, Jupyter, pytest, tqdm, h5py).  
-2. **Data localization:** Confirmed read access to shared Waymo data on `/scratch/...`, traced subfolders (TFRecords, `waymo_processed_data_v0_5_0/`, infos pickles), documented paths in `README.md`, and added **`data/raw/waymo132`** (symlink) plus **`data/infos_{train,val,test}.pkl`** from merged re-splits (see §2).  
+2. **Data localization:** Confirmed read access to shared Waymo data on `/scratch/...`, traced subfolders (TFRecords, `waymo_processed_data_v0_5_0/`, infos pickles), documented paths in `README.md`, and added **`data/raw/waymo132`** (symlink) plus **`data/infos_{train,val,test}.pkl`** from merged re-splits (see §§2–3).  
 3. **Trajectory window construction (for baseline experiments):**  
    - Group frames by **sequence** and **time index**.  
    - For each anchor time, extract **past** and **future** xy for objects present across the full window.  
@@ -128,7 +142,7 @@ We have **not** yet completed a full Motion-Dataset-specific pipeline (e.g. offi
 
 ---
 
-## 4. Current Progress
+## 5. Current Progress
 
 | Area | Status |
 |------|--------|
@@ -140,32 +154,35 @@ We have **not** yet completed a full Motion-Dataset-specific pipeline (e.g. offi
 | Training script | **Implemented:** `train/train_lstm_baseline.py` saves `best_model.pt` and `train_history.csv` |
 | Evaluation metrics | **Implemented:** ADE/FDE in `code/evaluation/metrics.py`; `evaluate_checkpoint.py` for checkpoints |
 | Full training runs on HPC GPU jobs | **Optional / team discretion** - pipeline is ready; extensive runs not required for this progress report |
-| Multi-agent + map stages | **Not started** (planned) |
+| Multi-agent stage | **Not started** (planned) |
+| Map-aware stage | **Not started** (planned; **last**; **conditional** on supplementary map/lane data) |
 | Literature review | **Ongoing** as part of proposal and method selection |
 
 ---
 
-## 5. Challenges Faced
+## 6. Active Challenges
 
-1. **Dataset packaging vs proposal:** Course proposal emphasizes **Waymo Motion**; HPC exposes **large perception-style** Waymo assets and **processed** infos/point clouds. **Impact:** We must either align training with **motion TFRecords** or clearly scope the baseline to **processed tracking-style** xy (current code path).  
-2. **Software stack on HPC:** Older **Python 3.6** limits some library versions; installing **Waymo's official `waymo_open_dataset`** pip wheels failed in our environment. **Impact:** We rely on **preprocessed numpy/pickle** artifacts for EDA and window building instead of raw TFRecord decoding via that package.  
-3. **Filesystem navigation and tooling:** The Waymo mirror spans many subdirectories; **`du` over NFS could stall**, so we relied on **`find`-style inventories** and targeted checks. **Impact:** Slower to get “total size” but reliable **file counts** and path validation.  
-4. **Variable number of agents per frame:** Many objects per frame and varying continuity across time complicates batching. **Impact:** Current baseline uses **single-agent windows** extracted from shared trajectories; multi-agent batching will need **padding/masking** or set-based models.  
-5. **Class imbalance:** Vehicles (and signage in 3D detection metadata) appear far more often than vulnerable road users. **Impact:** Per-class ADE/FDE and sampling strategies are required for fair comparison.  
-6. **Long-horizon error growth:** Forecasting far ahead accumulates error; **Impact:** We may emphasize shorter horizons first or use multi-scale supervision.  
-7. **Coordinate frames:** Global vs **agent-local** frames affects stability; **Impact:** We already center trajectories locally in the window builder; map alignment is future work.
+1. **Dataset mismatch:** The proposal emphasizes **Waymo Motion** (motion forecasting TFRecords), while HPC primarily exposes **perception-style** assets and **preprocessed** infos + LiDAR. We must either **integrate Motion parsing** with a supported stack or **formally scope** the baseline to processed tracking-style xy and document the gap to the motion benchmark.  
+2. **HPC limitations:** The cluster runs older **Python 3.6**, which caps library versions; **`waymo_open_dataset`** wheels did not install cleanly for us. We lean on **NumPy/pickle** pipelines and preprocessed shards rather than official TFRecord decoding in-process.  
+3. **Filesystem complexity:** The Waymo mirror is **deep and large**; **`du` on NFS can stall**, so discovering layout and counts required **walking subtrees** and **`find`-style** inventories instead of a single quick size command.  
+4. **Coordinate alignment:** Forecasting is sensitive to **global vs agent-local** frames; we center trajectories in the window builder, but **map-aligned** coordinates and consistent ego vs object frames remain future work.  
+5. **Long-horizon prediction under messy supervision:** **Variable agent counts** per frame, **class imbalance**, and **error growth** over long prediction horizons compound—motivating per-class metrics, padding/masking for multi-agent batches, and possibly shorter horizons or multi-scale loss before map features land.
 
 ---
 
-## 6. Plan for Completion
+## 7. Plan for Completion
 
-### Remaining tasks (high level)
+**Next steps:** Finalize the **dataset pipeline** (Motion vs processed scope; loaders aligned with `data/infos_*.pkl` where used), run **baseline experiments** on HPC, and **evaluate** with ADE/FDE (and per-class where labels allow).
 
-1. **Finalize data path:** Either integrate **Waymo Motion** TFRecords with a supported runtime, or formally scope the project to **processed HPC tracking** data and document the choice.  
+**Timeline:** **Baseline complete** (early April) → **Multi-agent model** (mid April) → **Map-aware model** (late April, **if applicable supplementary map data is available**) → **Final report / presentation** (final weeks).
+
+### Remaining tasks (detail)
+
+1. **Finalize data path:** Integrate **Waymo Motion** TFRecords with a supported runtime, or formally scope the project to **processed HPC tracking** data and document the choice; wire training to **merged splits** as needed.  
 2. **Baseline experiments:** Run `train_lstm_baseline.py` on HPC (CPU/GPU job), tune `past_len`, `future_len`, `max-windows`, learning rate.  
 3. **Evaluation:** Report **ADE/FDE** on validation; add **per-class** breakdown once labels are mapped consistently.  
 4. **Multi-agent module:** Nearby agent tensor + attention or interaction layer.  
-5. **Map features:** Lane/boundary encoding (raster or vector).  
+5. **Map features (conditional, last):** Lane/boundary encoding (raster or vector) **only if** we obtain suitable supplementary data; otherwise document LiDAR-BEV or scope limits.  
 6. **Figures for final report:** Prediction vs ground truth overlaid on BEV or map.
 
 ### Team responsibilities (aligned with proposal)
@@ -180,7 +197,7 @@ We have **not** yet completed a full Motion-Dataset-specific pipeline (e.g. offi
 ### Methods to try
 
 - **Baseline:** LSTM (implemented); optional **Transformer** encoder if compute allows.  
-- **Later:** Graph or attention over agents; **map CNN** or **polyline** encoders.
+- **Later:** Graph or attention over agents; **map CNN** or **polyline** encoders if supplementary map or lane data is available.
 
 ### Evaluation plan
 
@@ -188,18 +205,9 @@ We have **not** yet completed a full Motion-Dataset-specific pipeline (e.g. offi
 - **Per-class** metrics where labels permit.  
 - **Qualitative** trajectory plots vs map / BEV.
 
-### Timeline (suggested)
-
-| Period | Milestone |
-|--------|-----------|
-| Now - early April | Lock data format; complete baseline training + val metrics |
-| Mid April | Multi-agent v1 + ablations |
-| Late April | Map-aware v1 + final figures |
-| Final weeks | Write-up, slides, reproducibility (README, seeds, checkpoints) |
-
 ---
 
-## 7. Team Contributions (so far)
+## 8. Team Contributions (so far)
 
 Contributions are aligned with the division of labor in our project proposal and the artifacts in the repository:
 
@@ -212,11 +220,11 @@ Contributions are aligned with the division of labor in our project proposal and
 
 ---
 
-## 8. Figures for the report (EDA support)
+## 9. Figures for the report (EDA support)
 
 *Instructions for the team: paste or embed each image **immediately above** the paragraph that follows its `[filename]` line. Files below are names we used under `results/` (e.g. `results/eda_full/`, `results/views_top_bottom/`); copy or export to your PDF as needed.*
 
-### 8.1 Object- and label-level EDA (`EDA.py`)
+### 9.1 Object- and label-level EDA (`EDA.py`)
 
 `[class_counts_top10.png]`
 
@@ -230,7 +238,7 @@ This histogram shows the **distribution of object counts per frame**. It support
 
 This histogram summarizes **global speed magnitude** of annotated objects (from metadata). It helps characterize **typical motion speeds** in the subset we analyzed and can be cited when discussing motion scale for forecasting.
 
-### 8.2 Point-cloud EDA (`EDA_pointcloud.py`)
+### 9.2 Point-cloud EDA (`EDA_pointcloud.py`)
 
 `[num_points_per_frame_hist.png]`
 
@@ -254,11 +262,11 @@ This summarizes **mean intensity** per frame across the subset. It is secondary 
 
 ---
 
-## 9. Code excerpts and brief explanations
+## 10. Code excerpts and brief explanations
 
 The following snippets are **representative** of our pipeline (see repository for full files). They show how raw **metadata** becomes **supervised windows**, how the **baseline** maps past motion to future points, and how we will **score** predictions.
 
-### 9.1 Building supervised trajectory windows (`waymo_windows.py`)
+### 10.1 Building supervised trajectory windows (`waymo_windows.py`)
 
 **Purpose:** Group frames by **sequence**, require the same **object ID** across **past** and **future** indices, and express positions in a **local frame** (origin at the last past point) for stable training.
 
@@ -298,7 +306,7 @@ def build_xy_windows(infos_path, past_len=10, future_len=20, max_windows=20000):
 
 **Explanation:** `past` and `future` are aligned in time; **subtraction by `origin`** centers the target at the last observed step. Outputs are **numpy** arrays shaped for batching into PyTorch tensors.
 
-### 9.2 Baseline LSTM (`lstm_baseline.py`)
+### 10.2 Baseline LSTM (`lstm_baseline.py`)
 
 **Purpose:** Encode the **past sequence** with an **LSTM**, then regress **all future (x, y)** in one forward pass (shape `[batch, future_len, 2]`).
 
@@ -324,7 +332,7 @@ class LSTMBaseline(nn.Module):
 
 **Explanation:** `h[-1]` is the **last hidden state** of the last time step (encoding the past). The **head** expands to `future_len * 2` values and reshapes to **future trajectories**.
 
-### 9.3 Evaluation metrics (`metrics.py`)
+### 10.3 Evaluation metrics (`metrics.py`)
 
 **Purpose:** Implement **ADE** (mean error over all future steps) and **FDE** (error at the **final** predicted time), matching standard trajectory forecasting practice.
 
@@ -343,7 +351,7 @@ def fde(pred, target):
 
 ---
 
-## 10. References (informal)
+## 11. References (informal)
 
 - Waymo Open Dataset - Motion / perception documentation: [https://waymo.com/open/](https://waymo.com/open/)  
 - Course project proposal (team): *Trajectory Prediction for Autonomous Driving* - baseline -> multi-agent -> map-aware roadmap.
