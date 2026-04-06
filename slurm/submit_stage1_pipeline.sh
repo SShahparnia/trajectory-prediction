@@ -34,6 +34,20 @@ LR="${LR:-0.001}"
 HIDDEN_DIM="${HIDDEN_DIM:-128}"
 SEED="${SEED:-42}"
 
+if [[ ! -f "${TRAIN_INFOS}" ]]; then
+  echo "ERROR: TRAIN_INFOS not found: ${TRAIN_INFOS}" >&2
+  exit 1
+fi
+if [[ ! -f "${VAL_INFOS}" ]]; then
+  echo "ERROR: VAL_INFOS not found: ${VAL_INFOS}" >&2
+  exit 1
+fi
+if [[ ! -f "${TEST_INFOS}" ]]; then
+  echo "WARN: TEST_INFOS not found: ${TEST_INFOS}" >&2
+  echo "WARN: Falling back TEST_INFOS to VAL_INFOS for this run." >&2
+  TEST_INFOS="${VAL_INFOS}"
+fi
+
 echo "Submitting Stage 1 train job..."
 TRAIN_JOB_ID=$(
   sbatch --parsable \

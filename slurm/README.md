@@ -6,7 +6,9 @@ This folder contains a ready-to-run Stage 1 pipeline aligned with your proposal:
 - **Validate** on `val` split
 - **Test** on `test` split
 
-All three stages use your existing `data/infos_*.pkl` split files (which point to HPC scratch data).
+By default, it now uses **direct scratch infos paths** from
+`/scratch/lts-data/cmpe249-fa22/Waymo132/..._infos_{train,val}.pkl`,
+so it still runs even if local `data/` split files are missing.
 
 ## Files
 
@@ -58,6 +60,9 @@ VAL_INFOS=data/infos_val.pkl \
 TEST_INFOS=data/infos_test.pkl \
 ./slurm/submit_stage1_pipeline.sh
 ```
+
+If you later recreate local split pickles (`data/infos_train.pkl`, etc.), just override
+`TRAIN_INFOS`, `VAL_INFOS`, `TEST_INFOS` or update `slurm/pipeline_defaults.env`.
 
 ## Notes
 
