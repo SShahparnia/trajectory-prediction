@@ -16,26 +16,38 @@ This repository is set up so your team can train **your own model and weights** 
 
 `code/`
 - `data_pipeline/waymo_windows.py`: builds supervised trajectory windows from Waymo processed `*_infos_*.pkl`
+- `data_pipeline/multi_agent_windows.py`: builds multi-agent windows (ego + K neighbors + mask)
 - `feature_engineering/trajectory_features.py`: simple feature helper (`xy -> [xy, velocity]`)
 - `models/lstm_baseline.py`: baseline LSTM encoder + MLP prediction head
+- `models/transformer_baseline.py`: transformer encoder baseline for single-agent forecasting
+- `models/multi_agent_lstm.py`: interaction-aware multi-agent LSTM with masked neighbor pooling
 - `evaluation/metrics.py`: ADE / FDE
 - `evaluation/evaluate_checkpoint.py`: evaluate a saved checkpoint
+- `evaluation/evaluate_trajectory_checkpoint.py`: unified checkpoint evaluator + qualitative trajectory plots
 
 Top-level scripts:
 - `EDA.py`: object-level EDA from `*_infos_*.pkl`
 - `EDA_pointcloud.py`: point-cloud EDA from processed `.npy` frames
 - `train/train_lstm_baseline.py`: trains baseline and saves `best_model.pt`
+- `train/train_trajectory_model.py`: unified trainer for `lstm`, `transformer`, and `multi_lstm`
+- `scripts/plot_model_comparison.py`: creates ADE/FDE + validation-loss comparison figures
+- `scripts/simulate_lidar_bev.py`: LiDAR BEV/3D playback with optional GT/cluster overlays
+- `scripts/simulate_model_rollout_bev.py`: model-driven rollout animation (past/GT/pred, optional neighbors)
+- `scripts/run_friday_pipeline.sh`: one-command local full pipeline runner
 
 Output folders:
 - `results/eda_*`
 - `results/pointcloud_eda*`
 - `results/experiments/<run_tag>/` (canonical train/val/test pipeline output)
+- `results/lidar_sim/*` (LiDAR scene playback assets)
+- `results/model_rollout_sim/*` (model rollout simulation GIFs)
 
 Slurm:
 - `slurm/submit_stage1_pipeline.sh`: submit train + val/test eval pipeline
 - `slurm/train_stage1_lstm.sbatch`: Stage 1 train job
 - `slurm/eval_checkpoint.sbatch`: checkpoint evaluation job
 - `slurm/pipeline_defaults.env`: shared defaults
+- `slurm/run_friday_pipeline.sbatch`: CPU-friendly one-job full pipeline submit
 
 ---
 
@@ -230,6 +242,213 @@ Details and overrides are documented in `slurm/README.md`.
 - Multi-agent context: add nearby agent features + masking
 - Map-aware model: lane and boundary features
 - Better eval suite: per-class ADE/FDE, trajectory visual overlays, failure case reports
+
+---
+
+## Fast Friday Milestone (LSTM + Transformer + Multi-Agent)
+
+If you only need the due-soon scope, use your existing split pickles in `data/`:
+
+- `data/infos_train.pkl`
+- `data/infos_val.pkl`
+- `data/infos_test.pkl`
+
+Train 3 model variants on the same split protocol:
+
+```bash
+source .venv/bin/activate
+
+# 1) Single-agent LSTM
+python train/train_trajectory_model.py \
+  --model-type lstm \
+  --train-infos data/infos_train.pkl \
+  --val-infos data/infos_val.pkl \
+  --past-len 10 --future-len 20 \
+  --max-train-windows 2500 --max-val-windows 800 \
+  --epochs 12 --batch-size 64 \
+  --out-dir results/experiments/lstm
+
+# 2) Single-agent Transformer
+python train/train_trajectory_model.py \
+  --model-type transformer \
+  --train-infos data/infos_train.pkl \
+  --val-infos data/infos_val.pkl \
+  --past-len 10 --future-len 20 \
+  --max-train-windows 2500 --max-val-windows 800 \
+  --epochs 12 --batch-size 64 \
+  --out-dir results/experiments/transformer
+
+# 3) Multi-agent LSTM (neighbor masking/padding)
+python train/train_trajectory_model.py \
+  --model-type multi_lstm \
+  --train-infos data/infos_train.pkl \
+  --val-infos data/infos_val.pkl \
+  --past-len 10 --future-len 20 \
+  --max-neighbors 12 \
+  --max-train-windows 2500 --max-val-windows 800 \
+  --epochs 12 --batch-size 48 \
+  --out-dir results/experiments/multi_lstm
+```
+
+Evaluate on test split:
+
+```bash
+python code/evaluation/evaluate_trajectory_checkpoint.py \
+  --checkpoint results/experiments/lstm/best_model.pt \
+  --infos data/infos_test.pkl \
+  --past-len 10 --future-len 20 \
+  --max-windows 800 \
+  --metrics-out results/experiments/lstm/test_metrics.json \
+  --viz-out-dir results/experiments/lstm/qualitative_test \
+  --num-viz 12
+
+python code/evaluation/evaluate_trajectory_checkpoint.py \
+  --checkpoint results/experiments/transformer/best_model.pt \
+  --infos data/infos_test.pkl \
+  --past-len 10 --future-len 20 \
+  --max-windows 800 \
+  --metrics-out results/experiments/transformer/test_metrics.json \
+  --viz-out-dir results/experiments/transformer/qualitative_test \
+  --num-viz 12
+
+python code/evaluation/evaluate_trajectory_checkpoint.py \
+  --checkpoint results/experiments/multi_lstm/best_model.pt \
+  --infos data/infos_test.pkl \
+  --past-len 10 --future-len 20 \
+  --max-neighbors 12 \
+  --max-windows 800 \
+  --metrics-out results/experiments/multi_lstm/test_metrics.json \
+  --viz-out-dir results/experiments/multi_lstm/qualitative_test \
+  --num-viz 12
+```
+
+Create side-by-side comparison plots:
+
+```bash
+python scripts/plot_model_comparison.py \
+  --run lstm results/experiments/lstm/train_history.csv results/experiments/lstm/test_metrics.json \
+  --run transformer results/experiments/transformer/train_history.csv results/experiments/transformer/test_metrics.json \
+  --run multi_lstm results/experiments/multi_lstm/train_history.csv results/experiments/multi_lstm/test_metrics.json \
+  --out-dir results/experiments/comparison
+```
+
+Outputs:
+- `results/experiments/comparison/val_loss_comparison.png`
+- `results/experiments/comparison/ade_fde_comparison.png`
+- `results/experiments/comparison/metrics_summary.csv`
+
+### One-command run (local shell)
+
+```bash
+chmod +x scripts/run_friday_pipeline.sh
+bash scripts/run_friday_pipeline.sh
+```
+
+### One-command run (Slurm)
+
+```bash
+sbatch slurm/run_friday_pipeline.sbatch
+```
+
+Optional overrides at submit time:
+
+```bash
+RUN_TAG=friday_final \
+MAX_TRAIN_WINDOWS=6000 \
+MAX_VAL_WINDOWS=2000 \
+MAX_TEST_WINDOWS=2000 \
+EPOCHS=12 \
+sbatch slurm/run_friday_pipeline.sbatch
+```
+
+Additional qualitative visuals are saved in:
+- `results/experiments/<run_tag>/lstm/qualitative_test/`
+- `results/experiments/<run_tag>/transformer/qualitative_test/`
+- `results/experiments/<run_tag>/multi_lstm/qualitative_test/`
+
+### LiDAR simulation-style playback (BEV or 3D)
+
+Generate a frame-by-frame BEV animation from processed LiDAR:
+
+```bash
+source .venv/bin/activate
+python scripts/simulate_lidar_bev.py \
+  --infos data/infos_test.pkl \
+  --processed-root /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0 \
+  --num-frames 30 \
+  --fps 5 \
+  --overlay-gt \
+  --cluster-detections \
+  --out-dir results/lidar_sim/demo1
+```
+
+Clean top-down presentation version:
+
+```bash
+python scripts/simulate_lidar_bev.py \
+  --infos data/infos_test.pkl \
+  --processed-root /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0 \
+  --num-frames 30 \
+  --fps 5 \
+  --clean \
+  --out-dir results/lidar_sim/demo1_clean
+```
+
+3D clean playback:
+
+```bash
+python scripts/simulate_lidar_bev.py \
+  --infos data/infos_test.pkl \
+  --processed-root /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0 \
+  --mode 3d \
+  --num-frames 30 \
+  --fps 5 \
+  --clean \
+  --out-dir results/lidar_sim/demo1_3d_clean
+```
+
+Outputs:
+- `results/lidar_sim/demo1/frames/*.png`
+- `results/lidar_sim/demo1/lidar_bev_sim.gif`
+
+Notes:
+- `--overlay-gt` shows GT object centers from annotations.
+- `--cluster-detections` shows unsupervised DBSCAN cluster centroids as a lightweight object-detection proxy.
+
+### Model rollout simulation (prediction GIFs)
+
+Generate a rollout animation from a trained checkpoint:
+
+```bash
+python scripts/simulate_model_rollout_bev.py \
+  --checkpoint results/experiments/friday_20260429_230906/multi_lstm/best_model.pt \
+  --infos data/infos_test.pkl \
+  --past-len 10 \
+  --future-len 20 \
+  --max-windows 800 \
+  --max-neighbors 12 \
+  --sample-idx -1 \
+  --fps 5 \
+  --out-dir results/model_rollout_sim/demo_multi
+```
+
+Comparable clean overhead rollouts (same sample across models):
+
+```bash
+python scripts/simulate_model_rollout_bev.py \
+  --checkpoint results/experiments/friday_20260429_230906/lstm/best_model.pt \
+  --infos data/infos_test.pkl \
+  --past-len 10 --future-len 20 \
+  --max-windows 220 \
+  --sample-idx 163 \
+  --clean \
+  --out-dir results/model_rollout_sim/overhead_lstm
+```
+
+Legend meaning:
+- `past` (black): model input history
+- `future_gt` (green): ground-truth future
+- `future_pred` (red dashed): model prediction
 
 ---
 
