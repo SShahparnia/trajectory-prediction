@@ -17,15 +17,22 @@ from code.data_pipeline.multi_agent_windows import (  # noqa: E402
     build_multi_agent_windows,
 )
 from code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows  # noqa: E402
-from code.evaluation.metrics import ade, fde  # noqa: E402
+from code.evaluation.metrics import ade, fde, min_ade_at_k, min_fde_at_k  # noqa: E402
 from code.models.lstm_baseline import LSTMBaseline  # noqa: E402
 from code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
+from code.models.multi_agent_lstm_attn import MultiAgentLSTMAttention  # noqa: E402
+from code.models.multimodal_lstm import MultimodalLSTM, multimodal_wta_smooth_l1  # noqa: E402
 from code.models.transformer_baseline import TransformerBaseline  # noqa: E402
 
 
 def parse_args():
     p = argparse.ArgumentParser("Train trajectory model variants")
-    p.add_argument("--model-type", type=str, default="lstm", choices=["lstm", "transformer", "multi_lstm"])
+    p.add_argument(
+        "--model-type",
+        type=str,
+        default="lstm",
+        choices=["lstm", "transformer", "multi_lstm", "multi_lstm_attn", "lstm_multimodal"],
+    )
     p.add_argument("--train-infos", type=str, default="data/infos_train.pkl")
     p.add_argument("--val-infos", type=str, default="data/infos_val.pkl")
     p.add_argument("--past-len", type=int, default=10)
@@ -44,6 +51,14 @@ def parse_args():
     p.add_argument("--transformer-layers", type=int, default=2)
     p.add_argument("--transformer-ffn-dim", type=int, default=256)
     p.add_argument("--transformer-dropout", type=float, default=0.1)
+
+    p.add_argument("--num-modes", type=int, default=6, help="For lstm_multimodal: number of trajectory hypotheses.")
+    p.add_argument(
+        "--attn-heads",
+        type=int,
+        default=4,
+        help="For multi_lstm_attn: cross-attention heads.",
+    )
 
     p.add_argument("--out-dir", type=str, required=True)
     return p.parse_args()
@@ -99,16 +114,35 @@ def _build_model(args):
             dropout=args.transformer_dropout,
             future_len=args.future_len,
         )
-    return MultiAgentLSTM(
-        in_dim=2,
-        hidden_dim=args.hidden_dim,
-        neighbor_hidden_dim=max(args.hidden_dim // 2, 32),
-        future_len=args.future_len,
-    )
+    if args.model_type == "multi_lstm":
+        return MultiAgentLSTM(
+            in_dim=2,
+            hidden_dim=args.hidden_dim,
+            neighbor_hidden_dim=max(args.hidden_dim // 2, 32),
+            future_len=args.future_len,
+        )
+    if args.model_type == "multi_lstm_attn":
+        return MultiAgentLSTMAttention(
+            in_dim=2,
+            hidden_dim=args.hidden_dim,
+            neighbor_hidden_dim=max(args.hidden_dim // 2, 32),
+            future_len=args.future_len,
+            attn_dim=args.hidden_dim,
+            n_heads=args.attn_heads,
+            dropout=args.transformer_dropout,
+        )
+    if args.model_type == "lstm_multimodal":
+        return MultimodalLSTM(
+            in_dim=2,
+            hidden_dim=args.hidden_dim,
+            future_len=args.future_len,
+            num_modes=args.num_modes,
+        )
+    raise ValueError("unknown model_type: {}".format(args.model_type))
 
 
 def _forward_batch(model_type, model, batch, device):
-    if model_type == "multi_lstm":
+    if model_type in ("multi_lstm", "multi_lstm_attn"):
         ego_x, neigh_x, neigh_mask, yb = batch
         pred = model(ego_x.to(device), neigh_x.to(device), neigh_mask.to(device))
         return pred, yb.to(device)
@@ -117,13 +151,25 @@ def _forward_batch(model_type, model, batch, device):
     return pred, yb.to(device)
 
 
+def _batch_loss(loss_fn, model_type, pred, yb):
+    if model_type == "lstm_multimodal":
+        return multimodal_wta_smooth_l1(pred, yb)
+    return loss_fn(pred, yb)
+
+
+def _val_metrics_numpy(model_type, pred_np, tgt_np):
+    if model_type == "lstm_multimodal":
+        return float(min_ade_at_k(pred_np, tgt_np)), float(min_fde_at_k(pred_np, tgt_np))
+    return float(ade(pred_np, tgt_np)), float(fde(pred_np, tgt_np))
+
+
 def main():
     args = parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    if args.model_type == "multi_lstm":
+    if args.model_type in ("multi_lstm", "multi_lstm_attn"):
         train_ds, val_ds = _build_multi_agent_ds(args)
     else:
         train_ds, val_ds = _build_single_agent_ds(args)
@@ -145,7 +191,7 @@ def main():
         for batch in train_loader:
             opt.zero_grad()
             pred, yb = _forward_batch(args.model_type, model, batch, device)
-            loss = loss_fn(pred, yb)
+            loss = _batch_loss(loss_fn, args.model_type, pred, yb)
             loss.backward()
             opt.step()
             tr_losses.append(loss.item())
@@ -156,18 +202,19 @@ def main():
         with torch.no_grad():
             for batch in val_loader:
                 pred, yb = _forward_batch(args.model_type, model, batch, device)
-                va_losses.append(loss_fn(pred, yb).item())
+                va_losses.append(_batch_loss(loss_fn, args.model_type, pred, yb).item())
                 pred_all.append(pred.cpu().numpy())
                 tgt_all.append(yb.cpu().numpy())
 
         pred_np = np.concatenate(pred_all, axis=0)
         tgt_np = np.concatenate(tgt_all, axis=0)
+        v_ade, v_fde = _val_metrics_numpy(args.model_type, pred_np, tgt_np)
         row = {
             "epoch": epoch,
             "train_loss": float(np.mean(tr_losses)),
             "val_loss": float(np.mean(va_losses)),
-            "val_ADE": float(ade(pred_np, tgt_np)),
-            "val_FDE": float(fde(pred_np, tgt_np)),
+            "val_ADE": v_ade,
+            "val_FDE": v_fde,
         }
         history.append(row)
         print(

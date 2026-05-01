@@ -1,0 +1,18 @@
+{
+  "source_train_pkl": "/scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0_infos_train.pkl",
+  "source_val_pkl": "/scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0_infos_val.pkl",
+  "combined_total_frames": 4761,
+  "split_train_frames": 3176,
+  "split_val_frames": 595,
+  "split_test_frames": 990,
+  "train_frac": 0.7,
+  "val_frac": 0.15,
+  "test_frac": 0.15000000000000005,
+  "seed": 42,
+  "split_by": "lidar_sequence (no segment shared across splits)",
+  "outputs": {
+    "train": "data/infos_train.pkl",
+    "val": "data/infos_val.pkl",
+    "test": "data/infos_test.pkl"
+  }
+}

@@ -5,6 +5,7 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
 from torch.utils.data import DataLoader
 
@@ -17,9 +18,11 @@ from code.data_pipeline.multi_agent_windows import (  # noqa: E402
     build_multi_agent_windows,
 )
 from code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows  # noqa: E402
-from code.evaluation.metrics import ade, fde  # noqa: E402
+from code.evaluation.metrics import ade, fde, min_ade_at_k, min_fde_at_k  # noqa: E402
 from code.models.lstm_baseline import LSTMBaseline  # noqa: E402
 from code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
+from code.models.multi_agent_lstm_attn import MultiAgentLSTMAttention  # noqa: E402
+from code.models.multimodal_lstm import MultimodalLSTM  # noqa: E402
 from code.models.transformer_baseline import TransformerBaseline  # noqa: E402
 
 
@@ -60,12 +63,31 @@ def _build_model(model_type, ckpt_args, future_len):
             dropout=ckpt_args.get("transformer_dropout", 0.1),
             future_len=future_len,
         )
-    return MultiAgentLSTM(
-        in_dim=2,
-        hidden_dim=ckpt_args.get("hidden_dim", 128),
-        neighbor_hidden_dim=max(ckpt_args.get("hidden_dim", 128) // 2, 32),
-        future_len=future_len,
-    )
+    if model_type == "multi_lstm":
+        return MultiAgentLSTM(
+            in_dim=2,
+            hidden_dim=ckpt_args.get("hidden_dim", 128),
+            neighbor_hidden_dim=max(ckpt_args.get("hidden_dim", 128) // 2, 32),
+            future_len=future_len,
+        )
+    if model_type == "multi_lstm_attn":
+        return MultiAgentLSTMAttention(
+            in_dim=2,
+            hidden_dim=ckpt_args.get("hidden_dim", 128),
+            neighbor_hidden_dim=max(ckpt_args.get("hidden_dim", 128) // 2, 32),
+            future_len=future_len,
+            attn_dim=ckpt_args.get("hidden_dim", 128),
+            n_heads=ckpt_args.get("attn_heads", 4),
+            dropout=ckpt_args.get("transformer_dropout", 0.1),
+        )
+    if model_type == "lstm_multimodal":
+        return MultimodalLSTM(
+            in_dim=2,
+            hidden_dim=ckpt_args.get("hidden_dim", 128),
+            future_len=future_len,
+            num_modes=ckpt_args.get("num_modes", 6),
+        )
+    raise ValueError("unknown model_type in checkpoint: {}".format(model_type))
 
 
 def main():
@@ -82,7 +104,7 @@ def main():
     past_inputs = []
     neigh_inputs = []
     neigh_masks = []
-    if model_type == "multi_lstm":
+    if model_type in ("multi_lstm", "multi_lstm_attn"):
         ds = MultiAgentTrajectoryDataset(
             *build_multi_agent_windows(
                 infos_path=args.infos,
@@ -120,6 +142,10 @@ def main():
 
     pred = np.concatenate(preds, axis=0)
     tgt = np.concatenate(tgts, axis=0)
+    if model_type == "lstm_multimodal":
+        ade_v, fde_v = float(min_ade_at_k(pred, tgt)), float(min_fde_at_k(pred, tgt))
+    else:
+        ade_v, fde_v = float(ade(pred, tgt)), float(fde(pred, tgt))
     out = {
         "model_type": model_type,
         "checkpoint": args.checkpoint,
@@ -128,9 +154,12 @@ def main():
         "future_len": args.future_len,
         "max_windows": args.max_windows,
         "samples": len(ds),
-        "ADE": float(ade(pred, tgt)),
-        "FDE": float(fde(pred, tgt)),
+        "ADE": ade_v,
+        "FDE": fde_v,
     }
+    if model_type == "lstm_multimodal":
+        out["minADE_at_K"] = ade_v
+        out["minFDE_at_K"] = fde_v
     os.makedirs(os.path.dirname(args.metrics_out), exist_ok=True)
     with open(args.metrics_out, "w") as f:
         json.dump(out, f, indent=2)
@@ -141,59 +170,95 @@ def main():
         os.makedirs(args.viz_out_dir, exist_ok=True)
         n = min(args.num_viz, pred.shape[0])
         past_np = np.concatenate(past_inputs, axis=0)
-        if model_type == "multi_lstm":
+        if model_type in ("multi_lstm", "multi_lstm_attn"):
             neigh_np = np.concatenate(neigh_inputs, axis=0)
             mask_np = np.concatenate(neigh_masks, axis=0)
+        sns.set_theme(
+            style="whitegrid",
+            context="notebook",
+            font_scale=0.85,
+            rc={"grid.alpha": 0.35, "grid.linestyle": "--"},
+        )
+        c_neigh, c_past, c_gt, c_pred, c_ego = sns.color_palette("muted", 5)
         for i in range(n):
-            fig = plt.figure(figsize=(6, 6))
-            if model_type == "multi_lstm":
+            fig, ax = plt.subplots(figsize=(6.2, 6.2), dpi=150)
+            if model_type in ("multi_lstm", "multi_lstm_attn"):
                 for k in range(neigh_np.shape[1]):
                     if mask_np[i, k] > 0.5:
                         ntraj = neigh_np[i, k]
-                        plt.plot(
+                        ax.plot(
                             ntraj[:, 0],
                             ntraj[:, 1],
-                            color="lightgray",
+                            color=c_neigh,
                             linewidth=1.0,
-                            alpha=0.8,
+                            alpha=0.75,
+                            solid_capstyle="round",
                         )
-            plt.plot(
+            ax.plot(
                 past_np[i, :, 0],
                 past_np[i, :, 1],
                 "o-",
-                color="black",
+                color=c_past,
                 label="past",
-                linewidth=1.5,
-                markersize=3,
+                linewidth=2.0,
+                markersize=4,
+                solid_capstyle="round",
             )
-            plt.plot(
+            ax.plot(
                 tgt[i, :, 0],
                 tgt[i, :, 1],
                 "o-",
-                color="tab:green",
-                label="future_gt",
-                linewidth=1.8,
-                markersize=3,
+                color=c_gt,
+                label="future (GT)",
+                linewidth=2.2,
+                markersize=4,
+                solid_capstyle="round",
             )
-            plt.plot(
-                pred[i, :, 0],
-                pred[i, :, 1],
-                "o--",
-                color="tab:red",
-                label="future_pred",
-                linewidth=1.8,
-                markersize=3,
-            )
-            plt.scatter([0.0], [0.0], color="tab:blue", s=35, label="ego_anchor")
-            plt.axis("equal")
-            plt.grid(True, alpha=0.3)
-            plt.title("{} sample {}".format(model_type, i))
-            plt.xlabel("x_local (m)")
-            plt.ylabel("y_local (m)")
-            plt.legend(loc="best", fontsize=8)
+            if model_type == "lstm_multimodal":
+                modes = pred[i]  # [K, F, 2]
+                err_k = np.linalg.norm(modes - tgt[i][np.newaxis, :, :], axis=-1).mean(axis=1)
+                best = int(np.argmin(err_k))
+                for kk in range(modes.shape[0]):
+                    if kk != best:
+                        ax.plot(
+                            modes[kk, :, 0],
+                            modes[kk, :, 1],
+                            "--",
+                            color="#b2bec3",
+                            linewidth=0.9,
+                            alpha=0.55,
+                        )
+                ax.plot(
+                    modes[best, :, 0],
+                    modes[best, :, 1],
+                    "o--",
+                    color=c_pred,
+                    label="future (best mode)",
+                    linewidth=2.2,
+                    markersize=4,
+                    solid_capstyle="round",
+                )
+            else:
+                ax.plot(
+                    pred[i, :, 0],
+                    pred[i, :, 1],
+                    "o--",
+                    color=c_pred,
+                    label="future (pred)",
+                    linewidth=2.2,
+                    markersize=4,
+                    solid_capstyle="round",
+                )
+            ax.scatter([0.0], [0.0], color=c_ego, s=42, zorder=5, edgecolors="white", linewidths=0.8, label="ego anchor")
+            ax.set_aspect("equal", adjustable="box")
+            ax.set_title("{} — sample {}".format(model_type, i))
+            ax.set_xlabel("x_local (m)")
+            ax.set_ylabel("y_local (m)")
+            ax.legend(loc="best", fontsize=8, framealpha=0.95)
+            sns.despine(ax=ax, left=False, bottom=False)
             plt.tight_layout()
             out_png = os.path.join(args.viz_out_dir, "traj_{:03d}.png".format(i))
-            fig.savefig(out_png, dpi=150)
+            fig.savefig(out_png, dpi=150, bbox_inches="tight", facecolor="white")
             plt.close(fig)
         print("saved qualitative plots: {}".format(args.viz_out_dir))
 
