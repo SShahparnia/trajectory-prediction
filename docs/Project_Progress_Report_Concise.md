@@ -2,7 +2,7 @@
 
 **Date:** March 27, 2026 | **Deadline:** March 28, 2026, 4:59 PM  
 
-**Team:** Shervan Shahparnia, Aaron Sam, Bhavdeep Randhawa, Attila Sayin  
+**Team:** Shervan Shahparnia, Aaron Sam, Bhavdeep Randhawa, Atilla Sayin  
 
 ---
 
