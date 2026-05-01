@@ -3,6 +3,13 @@
 Use this as a direct script for your deck.  
 Each slide has: **Title**, **Visual(s)**, **Talking points**.
 
+**Bundled visuals for slides 5–25:** `docs/presentation_assets/` (full list: `docs/presentation_assets/README_SLIDES.txt`). Slides 3–4 share that folder too. Regenerate everything:
+
+```bash
+python scripts/generate_slide03_slide04_visuals.py
+python scripts/generate_presentation_assets_slides05_plus.py
+```
+
 ---
 
 ## Slide 1 - Title
@@ -39,12 +46,13 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Why Trajectory Prediction Matters
 
 **Visual(s):**
-- 1 BEV point cloud frame with moving agents highlighted
+- `docs/presentation_assets/slide03_motivation_bev.png` (BEV-style schematic: pseudo-LiDAR ground, highlighted agents, past trajectory + plausible futures)
+- Regenerate: `python scripts/generate_slide03_slide04_visuals.py`
 
 **Talking points:**
-- Better trajectory forecasts support safer planning.
-- Key challenge: dense traffic interactions and uncertainty.
-- Goal: reduce future position error (ADE/FDE).
+- Better trajectory forecasts help planners anticipate where nearby vehicles and pedestrians will likely move over the next few seconds, which supports safer lane changes, braking, and collision avoidance.
+- A core challenge is that real traffic is highly interactive and uncertain: agents influence each other, scenes are dense, and the same current state can still lead to multiple plausible futures.
+- Our modeling objective is to reduce forecast error over a prediction horizon, measured by ADE (average displacement error across all future steps) and FDE (final-step displacement error at the endpoint).
 
 ---
 
@@ -52,8 +60,8 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Problem Setup (Input -> Output)
 
 **Visual(s):**
-- Diagram: past window (P=10) -> model -> future window (F=20)
-- Optional equation: f(past[, neighbors]) = future
+- `docs/presentation_assets/slide04_problem_setup.png` (pipeline: \(X_{t-P+1:t}\) → \(f_\theta\) → \(\hat{X}_{t+1:t+F}\), multi-agent note)
+- Regenerate: `python scripts/generate_slide03_slide04_visuals.py`
 
 **Talking points:**
 - Input: past XY trajectory (and neighbors for multi-agent).
@@ -66,12 +74,12 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Dataset and Data Source
 
 **Visual(s):**
-- Folder/data flow diagram from `/scratch/lts-data/cmpe249-fa22/Waymo132` -> `infos_*.pkl` -> windows
+- `docs/presentation_assets/slide05_dataset_flow.png`
 
 **Talking points:**
-- We use course-hosted Waymo processed metadata and LiDAR.
-- Raw data is large; project pipeline uses processed `infos` pickles.
-- Train/val/test split is sequence-based to avoid leakage.
+- Raw Waymo-related assets live on HPC; our repo implements parsing, trajectory extraction, and windowing.
+- We generate sequence-stratified train/val/test splits ourselves (no shared segments across splits).
+- Everything downstream—datasets, training, metrics—is produced by our scripts and checkpoints.
 
 ---
 
@@ -79,8 +87,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Train / Validation / Test Split
 
 **Visual(s):**
-- Pie or bar chart for split counts (train, val, test)
-- Optional text from `data/manifest.json` stats
+- `docs/presentation_assets/slide06_train_val_test_splits.png`
 
 **Talking points:**
 - Combined frames: 4761
@@ -93,7 +100,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** EDA - Object Distribution
 
 **Visual(s):**
-- `results/eda_full/class_counts_top10.png`
+- `docs/presentation_assets/slide07_eda_class_counts_top10.png`
 
 **Talking points:**
 - Strong class imbalance (vehicles dominate).
@@ -105,8 +112,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** EDA - Objects / Frame and Point Density
 
 **Visual(s):**
-- `results/eda_smoke/objects_per_frame_hist.png`
-- `results/eda_smoke/num_points_per_object_hist.png`
+- `docs/presentation_assets/slide08_eda_density_panel.png` (or separate `slide08a_*` / `slide08b_*` if Pillow missing during generation)
 
 **Talking points:**
 - Frame complexity varies significantly.
@@ -118,8 +124,8 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** LiDAR Context (BEV/3D)
 
 **Visual(s):**
-- `results/lidar_sim/demo1/lidar_bev_sim.gif`
-- Optionally show clean 3D gif next to it
+- `docs/presentation_assets/slide09_lidar_bev_clean.gif`
+- `docs/presentation_assets/slide09_lidar_3d_clean.gif`
 
 **Talking points:**
 - This is data playback (scene context), not prediction.
@@ -131,7 +137,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Single-Agent LSTM Baseline
 
 **Visual(s):**
-- Architecture block diagram (LSTM encoder + MLP head)
+- `docs/presentation_assets/slide10_architecture_lstm.png`
 
 **Talking points:**
 - Encodes ego past trajectory only.
@@ -143,7 +149,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Single-Agent Transformer Baseline
 
 **Visual(s):**
-- Encoder diagram: input projection + positional encoding + transformer encoder
+- `docs/presentation_assets/slide11_architecture_transformer.png`
 
 **Talking points:**
 - Captures temporal relationships differently from LSTM.
@@ -155,8 +161,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Multi-Agent LSTM (Interaction-Aware)
 
 **Visual(s):**
-- Diagram: ego encoder + neighbor encoder + mask/pooling + prediction head
-- Show K-neighbor padding/mask concept
+- `docs/presentation_assets/slide12_architecture_multi_agent_lstm.png`
 
 **Talking points:**
 - Uses nearby agents (max neighbors = 12).
@@ -169,7 +174,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Experimental Setup
 
 **Visual(s):**
-- Table: common hyperparameters, windows, epochs, metrics
+- `docs/presentation_assets/slide13_experimental_setup_table.png`
 
 **Talking points:**
 - Same split protocol across models.
@@ -182,7 +187,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Validation Loss Comparison
 
 **Visual(s):**
-- `results/experiments/<run_tag>/comparison/val_loss_comparison.png`
+- `docs/presentation_assets/slide14_val_loss_comparison.png`
 
 **Talking points:**
 - All models learn over epochs.
@@ -194,8 +199,8 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** ADE / FDE Comparison
 
 **Visual(s):**
-- `results/experiments/<run_tag>/comparison/ade_fde_comparison.png`
-- Tiny table from `metrics_summary.csv`
+- `docs/presentation_assets/slide15_ade_fde_comparison.png`
+- `docs/presentation_assets/slide15_metrics_table.png` + `slide15_metrics_summary.csv`
 
 **Talking points:**
 - Lower is better for both metrics.
@@ -207,7 +212,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Model Rollout - LSTM
 
 **Visual(s):**
-- `results/model_rollout_sim/overhead_lstm/model_rollout_lstm_sample0163.gif`
+- `docs/presentation_assets/slide16_rollout_lstm.gif`
 
 **Talking points:**
 - Black: past input
@@ -220,7 +225,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Model Rollout - Transformer
 
 **Visual(s):**
-- `results/model_rollout_sim/overhead_transformer/model_rollout_transformer_sample0163.gif`
+- `docs/presentation_assets/slide17_rollout_transformer.gif`
 
 **Talking points:**
 - Compare path smoothness and endpoint behavior.
@@ -232,7 +237,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Model Rollout - Multi-Agent LSTM
 
 **Visual(s):**
-- `results/model_rollout_sim/overhead_multi_lstm/model_rollout_multi_lstm_sample0163.gif`
+- `docs/presentation_assets/slide18_rollout_multi_lstm.gif`
 
 **Talking points:**
 - Includes neighbor context during prediction.
@@ -244,10 +249,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Same Scene, Three Models
 
 **Visual(s):**
-- 3-column layout:
-  - LSTM gif
-  - Transformer gif
-  - Multi-agent gif
+- `docs/presentation_assets/slide19_three_models_triptych.png` (first frame of each rollout GIF)
 
 **Talking points:**
 - Same sample index for fair qualitative comparison.
@@ -259,7 +261,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Key Findings
 
 **Visual(s):**
-- 3 concise callout boxes with icons (Data, Model, Result)
+- `docs/presentation_assets/slide20_key_findings.png`
 
 **Talking points:**
 - Forecasting from processed infos is feasible and reproducible.
@@ -272,7 +274,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Current Limitations
 
 **Visual(s):**
-- Risk/limitation table
+- `docs/presentation_assets/slide21_limitations_table.png`
 
 **Talking points:**
 - XY-only forecasting (no explicit Z/map constraints).
@@ -286,7 +288,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Next Steps
 
 **Visual(s):**
-- Roadmap timeline (short-term -> final paper)
+- `docs/presentation_assets/slide22_future_work_roadmap.png`
 
 **Talking points:**
 - Map-aware branch (lane/drivable constraints)
@@ -300,9 +302,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Reproducibility and Pipeline
 
 **Visual(s):**
-- Command snippet box:
-  - `bash scripts/run_friday_pipeline.sh`
-  - `sbatch slurm/run_friday_pipeline.sbatch`
+- `docs/presentation_assets/slide23_reproducibility_commands.png`
 
 **Talking points:**
 - Single command for train/eval/plots.
@@ -314,7 +314,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** References
 
 **Visual(s):**
-- Clean numbered list
+- `docs/presentation_assets/slide24_references.png`
 
 **Talking points:**
 - Waymo Open Dataset
@@ -327,7 +327,7 @@ Each slide has: **Title**, **Visual(s)**, **Talking points**.
 **Title:** Thank You
 
 **Visual(s):**
-- Best-looking GIF frame + contact/team info
+- `docs/presentation_assets/slide25_thank_you.png`
 
 **Talking points:**
 - Invite questions on model design, evaluation, and next steps.
