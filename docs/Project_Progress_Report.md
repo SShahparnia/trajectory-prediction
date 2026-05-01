@@ -2,7 +2,7 @@
 
 **Course project - Trajectory Prediction for Autonomous Driving**
 
-**Team:** Aaron Sam, Shervan Shahparnia, Bhavdeep Randhawa, Attila Sayin  
+**Team:** Aaron Sam, Shervan Shahparnia, Bhavdeep Randhawa, Atilla Sayin  
 
 **Report date:** March 27, 2026  
 
@@ -214,7 +214,7 @@ Contributions are aligned with the division of labor in our project proposal and
 - **Aaron:** Data pipeline direction; HPC data path verification; trajectory window builder (`waymo_windows.py`); EDA and documentation (`README.md`, EDA scripts).  
 - **Bhavdeep:** Feature-engineering scaffolding (`trajectory_features.py`); coordination on local frames and future map-related features.  
 - **Shervan:** Baseline model (`lstm_baseline.py`); training entry point (`train_lstm_baseline.py`); checkpoint format and hyperparameters.  
-- **Attila:** Evaluation metrics (`metrics.py`, `evaluate_checkpoint.py`); visualization-heavy EDA (plots, histograms, point-cloud figures) and interpretation support.
+- **Atilla:** Evaluation metrics (`metrics.py`, `evaluate_checkpoint.py`); visualization-heavy EDA (plots, histograms, point-cloud figures) and interpretation support.
 
 *All members participate in design discussions, debugging, and integration; the table reflects primary ownership.*
 

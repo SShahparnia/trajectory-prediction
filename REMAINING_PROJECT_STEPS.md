@@ -28,7 +28,7 @@ Data is already on HPC; focus is on **training, evaluation, and final delivery**
 - **Bhavdeep**
   - Finalize feature conventions for Stage 1 input (local frame assumptions).
   - Prepare feature hooks needed for Stage 2 neighbors (without full integration yet).
-- **Attila**
+- **Atilla**
   - Run ADE/FDE evaluation on held-out split.
   - Produce per-class ADE/FDE where labels allow.
   - Build first qualitative prediction-vs-ground-truth plot set.
@@ -64,7 +64,7 @@ Data is already on HPC; focus is on **training, evaluation, and final delivery**
 - **Bhavdeep**
   - Own neighbor feature definitions (KNN/radius, local coordinates, velocity encoding).
   - Tune padding/mask strategy for variable number of agents.
-- **Attila**
+- **Atilla**
   - Evaluate Stage 2 (overall + per-class ADE/FDE).
   - Produce Stage 2 vs Stage 1 comparison plots/tables.
   - Select examples where interactions clearly improve behavior.
@@ -97,7 +97,7 @@ Data is already on HPC; focus is on **training, evaluation, and final delivery**
 - **Shervan**
   - Integrate map-conditioned branch if feasible and run training/eval.
   - Otherwise stabilize best Stage 2 model and run final test evaluation.
-- **Attila**
+- **Atilla**
   - Final metrics table across stages: Stage 1 / Stage 2 / Stage 3 (or N/A with reason).
   - Final figure set (3-4 strongest visuals + key metric chart).
   - Lead report/slides merge and consistency check.
@@ -133,7 +133,7 @@ Data is already on HPC; focus is on **training, evaluation, and final delivery**
 - **Aaron:** data/split integrity, scope consistency, pipeline reliability
 - **Bhavdeep:** feature engineering, multi-agent features, map-aware feasibility/fallback
 - **Shervan:** model implementation + training execution (Stage 1/2/3 where feasible)
-- **Attila:** evaluation tables, figure curation, final report/presentation integration
+- **Atilla:** evaluation tables, figure curation, final report/presentation integration
 
 ---
 
