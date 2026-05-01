@@ -9,6 +9,7 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/home/017264195/trajectory-prediction}"
 cd "${PROJECT_DIR}"
+export PYTHONPATH="${PROJECT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
 if [[ ! -d ".venv" ]]; then
   echo "ERROR: .venv not found in ${PROJECT_DIR}" >&2

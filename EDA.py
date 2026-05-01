@@ -16,7 +16,24 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from tqdm import tqdm
+
+
+def _eda_plot_style():
+    sns.set_theme(
+        style="whitegrid",
+        context="notebook",
+        font_scale=1.05,
+        rc={
+            "axes.titlesize": 13,
+            "axes.labelsize": 11,
+            "figure.facecolor": "white",
+            "axes.facecolor": "#fafafa",
+            "grid.alpha": 0.4,
+            "grid.linestyle": "--",
+        },
+    )
 
 
 def parse_args():
@@ -121,48 +138,66 @@ def main():
     else:
         print("No class labels found.")
 
-    # Plots
-    plt.figure(figsize=(10, 5))
+    # Plots (seaborn + matplotlib)
+    _eda_plot_style()
+    hist_color = sns.color_palette("deep")[0]
+
     if not df_class.empty:
-        top = df_class.head(10)
-        plt.bar(top["class_name"], top["count"])
-        plt.title("Top-10 Class Counts")
-        plt.xticks(rotation=35, ha="right")
+        top = df_class.head(10).copy()
+        fig, ax = plt.subplots(figsize=(10, 5.2), dpi=160)
+        sns.barplot(
+            data=top,
+            x="class_name",
+            y="count",
+            order=top["class_name"].tolist(),
+            ax=ax,
+            palette=sns.color_palette("viridis", n_colors=len(top)),
+            edgecolor=".2",
+            linewidth=0.6,
+        )
+        ax.set_title("Top-10 class counts")
+        ax.set_xlabel("Class")
+        ax.set_ylabel("Count")
+        plt.setp(ax.get_xticklabels(), rotation=35, ha="right")
+        sns.despine(ax=ax, left=False, bottom=False)
         plt.tight_layout()
-        plt.savefig(os.path.join(args.out_dir, "class_counts_top10.png"), dpi=140)
-    plt.close()
+        plt.savefig(os.path.join(args.out_dir, "class_counts_top10.png"), dpi=160, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
 
-    plt.figure(figsize=(8, 5))
     if boxes_per_frame:
-        plt.hist(boxes_per_frame, bins=30)
-        plt.title("Objects per Frame")
-        plt.xlabel("Object count")
-        plt.ylabel("Frequency")
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=160)
+        sns.histplot(boxes_per_frame, bins=30, color=hist_color, ax=ax, edgecolor="white", linewidth=0.4)
+        ax.set_title("Objects per frame")
+        ax.set_xlabel("Object count")
+        ax.set_ylabel("Frequency")
+        sns.despine(ax=ax, left=False, bottom=False)
         plt.tight_layout()
-        plt.savefig(os.path.join(args.out_dir, "objects_per_frame_hist.png"), dpi=140)
-    plt.close()
+        plt.savefig(os.path.join(args.out_dir, "objects_per_frame_hist.png"), dpi=160, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
 
-    plt.figure(figsize=(8, 5))
     if points_per_obj:
         clipped = np.clip(np.array(points_per_obj), 0, np.percentile(points_per_obj, 99))
-        plt.hist(clipped, bins=40)
-        plt.title("Num Points per GT Object (clipped @ p99)")
-        plt.xlabel("num_points_in_gt")
-        plt.ylabel("Frequency")
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=160)
+        sns.histplot(clipped, bins=40, color=hist_color, ax=ax, kde=False, edgecolor="white", linewidth=0.35)
+        ax.set_title("Num points per GT object (clipped @ p99)")
+        ax.set_xlabel("num_points_in_gt")
+        ax.set_ylabel("Frequency")
+        sns.despine(ax=ax, left=False, bottom=False)
         plt.tight_layout()
-        plt.savefig(os.path.join(args.out_dir, "num_points_per_object_hist.png"), dpi=140)
-    plt.close()
+        plt.savefig(os.path.join(args.out_dir, "num_points_per_object_hist.png"), dpi=160, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
 
-    plt.figure(figsize=(8, 5))
     if speed_norm:
         clipped = np.clip(np.array(speed_norm), 0, np.percentile(speed_norm, 99))
-        plt.hist(clipped, bins=40)
-        plt.title("Object Speed Norm (m/s, clipped @ p99)")
-        plt.xlabel("speed magnitude")
-        plt.ylabel("Frequency")
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=160)
+        sns.histplot(clipped, bins=40, color=hist_color, ax=ax, kde=False, edgecolor="white", linewidth=0.35)
+        ax.set_title("Object speed norm (m/s, clipped @ p99)")
+        ax.set_xlabel("Speed magnitude")
+        ax.set_ylabel("Frequency")
+        sns.despine(ax=ax, left=False, bottom=False)
         plt.tight_layout()
-        plt.savefig(os.path.join(args.out_dir, "speed_norm_hist.png"), dpi=140)
-    plt.close()
+        plt.savefig(os.path.join(args.out_dir, "speed_norm_hist.png"), dpi=160, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
 
     print(f"\nSaved outputs to: {args.out_dir}")
     print(" - frames_summary.csv")
