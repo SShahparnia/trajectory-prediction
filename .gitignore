@@ -18,3 +18,9 @@ utils/__pycache__/
 slurm/__pycache__/
 docs/__pycache__/
 CMPE-257 Paper Presentation/
+
+# Presentation slide assets & generators (local only)
+docs/presentation_assets/
+docs/presentation_assets_transparent/
+scripts/generate_slide03_slide04_visuals.py
+scripts/generate_presentation_assets_slides05_plus.py
