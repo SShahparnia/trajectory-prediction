@@ -23,11 +23,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from code.data_pipeline.multi_agent_windows import build_multi_agent_windows  # noqa: E402
-from code.data_pipeline.waymo_windows import build_xy_windows  # noqa: E402
-from code.models.lstm_baseline import LSTMBaseline  # noqa: E402
-from code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
-from code.models.transformer_baseline import TransformerBaseline  # noqa: E402
+from traj_code.data_pipeline.multi_agent_windows import build_multi_agent_windows  # noqa: E402
+from traj_code.data_pipeline.waymo_windows import build_xy_windows  # noqa: E402
+from traj_code.models.lstm_baseline import LSTMBaseline  # noqa: E402
+from traj_code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
+from traj_code.models.transformer_baseline import TransformerBaseline  # noqa: E402
 
 
 def parse_args():

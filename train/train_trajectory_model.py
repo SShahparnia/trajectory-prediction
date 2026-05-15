@@ -12,17 +12,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from code.data_pipeline.multi_agent_windows import (  # noqa: E402
+from traj_code.data_pipeline.multi_agent_windows import (  # noqa: E402
     MultiAgentTrajectoryDataset,
     build_multi_agent_windows,
 )
-from code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows  # noqa: E402
-from code.evaluation.metrics import ade, fde, min_ade_at_k, min_fde_at_k  # noqa: E402
-from code.models.lstm_baseline import LSTMBaseline  # noqa: E402
-from code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
-from code.models.multi_agent_lstm_attn import MultiAgentLSTMAttention  # noqa: E402
-from code.models.multimodal_lstm import MultimodalLSTM, multimodal_wta_smooth_l1  # noqa: E402
-from code.models.transformer_baseline import TransformerBaseline  # noqa: E402
+from traj_code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows  # noqa: E402
+from traj_code.evaluation.metrics import ade, fde, min_ade_at_k, min_fde_at_k  # noqa: E402
+from traj_code.models.lstm_baseline import LSTMBaseline  # noqa: E402
+from traj_code.models.multi_agent_lstm import MultiAgentLSTM  # noqa: E402
+from traj_code.models.multi_agent_lstm_attn import MultiAgentLSTMAttention  # noqa: E402
+from traj_code.models.multimodal_lstm import MultimodalLSTM, multimodal_wta_smooth_l1  # noqa: E402
+from traj_code.models.transformer_baseline import TransformerBaseline  # noqa: E402
 
 
 def parse_args():

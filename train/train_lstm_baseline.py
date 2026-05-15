@@ -11,9 +11,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows
-from code.evaluation.metrics import ade, fde
-from code.models.lstm_baseline import LSTMBaseline
+from traj_code.data_pipeline.waymo_windows import TrajectoryDataset, build_xy_windows
+from traj_code.evaluation.metrics import ade, fde
+from traj_code.models.lstm_baseline import LSTMBaseline
 
 
 def parse_args():
