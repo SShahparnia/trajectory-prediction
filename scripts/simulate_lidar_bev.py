@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Create a simulation-style BEV playback from Waymo processed LiDAR frames.
 

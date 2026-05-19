@@ -1,0 +1,283 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[letterpaper, 10 pt, conference]{ieeeconf}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{booktabs}
+\usepackage{url}
+
+% CLICKABLE REFERENCE MACROS
+\newcommand{\figref}[1]{Fig.~\ref{#1}}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+\newcommand{\secref}[1]{Sec.~\ref{#1}}
+\newcommand{\eqnref}[1]{(\ref{#1})}
+
+\IEEEoverridecommandlockouts
+\overrideIEEEmargins
+
+% Figures live under repo paths (compile from repository root).
+\graphicspath{{./}}
+
+\title{\LARGE \bf
+Bird's-Eye Trajectory Forecasting on Waymo: LSTM, Transformer, and Multi-Agent Interaction Models
+}
+
+\author{
+\begin{tabular}{c c c c}
+\textbf{Shervan Shahparnia} & \textbf{Aaron Sam} & \textbf{Bhavdeep Randhawa} & \textbf{Atilla Sayin} \\[0.5em]
+\multicolumn{4}{c}{Department of Computer Engineering, San Jose State University} \\
+\multicolumn{4}{c}{San Jose, CA, USA}
+\end{tabular}
+}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+We present an end-to-end trajectory forecasting pipeline built on processed Waymo driving segments: sequence-level train/validation/test splits, fixed-horizon $(x,y)$ windows in a bird's-eye-view (BEV) frame, and reproducible training/evaluation scripts runnable locally or on university HPC (Slurm). We compare three PyTorch models under identical data conditions: a single-agent LSTM encoder with an MLP head, a single-agent Transformer encoder with positional encoding and an MLP head, and a multi-agent LSTM that encodes the ego past plus up to $K$ neighbors with padding and masking, mean-pools neighbor embeddings, and decodes a shared future polyline. We report standard Average Displacement Error (ADE) and Final Displacement Error (FDE) in meters, validation loss curves, and qualitative overlays of past, ground-truth future, and prediction. The system intentionally focuses on interaction-aware sequence models in BEV without rasterized map conditioning, which we identify as the primary direction for future map-aware extensions.
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{INTRODUCTION}
+
+Autonomous driving stacks require reliable short-horizon motion forecasts for surrounding agents. In dense traffic, an ego planner benefits from predictions that respect recent kinematics and, when available, multi-agent context.
+
+We target the setting where object tracks are already available in a local BEV frame, as produced by upstream detection and tracking on LiDAR/camera data. Our learning problem is therefore \emph{sequence-to-sequence}: given $P$ past $(x,y)$ steps, predict $F$ future $(x,y)$ steps for the ego agent, with optional neighbor histories for the multi-agent variant.
+
+\textbf{Contributions.} (1) A reproducible preprocessing and split workflow with a machine-readable manifest (sequence-level 70/15/15 split, no segment leakage across splits). (2) Three comparable forecasting baselines sharing the same tensorization and metrics: LSTM, Transformer, and multi-agent LSTM with masked neighbor pooling. (3) A documented evaluation and visualization toolchain (ADE/FDE, validation loss plots, qualitative trajectory PNGs, optional LiDAR BEV/3D playback and rollout GIFs for presentations). (4) Slurm and shell automation for batch training on shared HPC storage.
+
+This paper is aligned with our public course repository \texttt{trajectory-prediction}: training entry points, model definitions, data window builders, evaluation, plotting, and asset generation scripts.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{RELATED WORK}
+
+Recurrent models (notably LSTMs) remain strong baselines for motion history encoding. Transformers apply self-attention over the past horizon and are widely used when parallelizing over time is desirable. Multi-agent forecasting often uses graph attention, social pooling, or explicit interaction modules; our multi-agent baseline uses per-neighbor encoders and a simple masked mean pool as a lightweight interaction prior without a full scene graph.
+
+The Waymo Open Dataset and derived processed formats support large-scale driving research. We cite Waymo and classic sequence models below; map-conditional forecasting (raster or vector maps) is orthogonal and noted as future work.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{DATASET AND PREPROCESSING}
+
+\subsection{Dataset Overview}
+
+We consume \textbf{processed Waymo info pickles} (per-frame metadata and annotations) rather than re-parsing raw Motion TFRecords inside the training loop. Each frame lists tracked instances (e.g., vehicles, pedestrians, cyclists) with quantities such as class name, 3D box parameters, and point counts when available.
+
+Our working manifest (\texttt{data/manifest.json}) records \textbf{4{,}761} combined frames after preprocessing, split into \textbf{3{,}176} training, \textbf{595} validation, and \textbf{990} test frames at the \textbf{LiDAR-sequence} level so no segment is shared across splits.
+
+\subsection{Trajectory Windowing}
+
+From each infos pickle we build supervised windows with:
+\begin{itemize}
+    \item Past length $P = 10$ and future length $F = 20$ (BEV $(x,y)$ in an ego-centric local frame aligned with the forecasting agent).
+    \item For multi-agent training, up to $K = 12$ neighbors by default, with tensors padded to fixed $K$ and a binary mask indicating valid slots.
+\end{itemize}
+
+Window construction is implemented in \texttt{code/data\_pipeline/waymo\_windows.py} (single-agent) and \texttt{code/data\_pipeline/multi\_agent\_windows.py} (multi-agent).
+
+\subsection{Exploratory Analysis}
+
+We ship a lightweight EDA script (\texttt{EDA.py}) that scans a subset of frames and exports class histograms, objects-per-frame counts, points-per-object distributions, and speed norms. \figref{fig:class_distribution}--\figref{fig:points_per_obj} summarize structure and imbalance on a representative scan.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{results/eda_large/class_counts_top10.png}
+    \caption{Top-10 class counts from processed annotations (vehicles dominate).}
+    \label{fig:class_distribution}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{results/eda_large/objects_per_frame_hist.png}
+    \caption{Distribution of annotated objects per frame (variable cardinality motivates padding/masking in multi-agent models).}
+    \label{fig:objects_per_frame}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{results/eda_large/num_points_per_object_hist.png}
+    \caption{LiDAR point counts per ground-truth object (clipped at the 99th percentile for readability).}
+    \label{fig:points_per_obj}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{METHODOLOGY}
+
+\subsection{Single-Agent LSTM Baseline}
+
+The LSTM baseline (\texttt{LSTMBaseline}) encodes the past polyline with a single-layer unidirectional LSTM (hidden size 128), takes the final hidden state, and applies a two-layer MLP with ReLU to regress $F \times 2$ coordinates reshaped to $[F,2]$.
+
+\subsection{Single-Agent Transformer Baseline}
+
+The Transformer baseline (\texttt{TransformerBaseline}) linearly embeds each $(x,y)$ token to $d_{\mathrm{model}} = 128$, adds sinusoidal positional encoding, passes a 2-layer PyTorch \texttt{TransformerEncoder} (4 heads, FFN width 256, GELU, dropout 0.1), pools the last time step after layer normalization, and decodes with a two-layer MLP to $F \times 2$.
+
+\subsection{Multi-Agent LSTM}
+
+The multi-agent model (\texttt{MultiAgentLSTM}) encodes ego past with an LSTM (hidden 128) and each neighbor trajectory with a separate LSTM (hidden 96). Neighbor hidden states are masked, averaged over valid neighbors, concatenated with the ego embedding, and passed through a two-layer MLP head. This design adds interaction signal without attention over agents or map rasters.
+
+\subsection{Training Objective and Optimization}
+
+All models minimize the \textbf{Smooth L1} loss between predicted and ground-truth future coordinates. Optimization uses \textbf{Adam} with learning rate $10^{-3}$ by default. Training is orchestrated by \texttt{train/train\_trajectory\_model.py} (\texttt{lstm}, \texttt{transformer}, \texttt{multi\_lstm}). Hyperparameters such as epoch count, batch size, and window caps are configurable; our bundled ``Friday'' pipeline uses modest caps for CPU-friendly iteration when GPU queues are congested.
+
+\subsection{What We Do \emph{Not} Claim}
+
+We do \textbf{not} encode HD maps, lane graphs, or rasterized drivable masks in the current checkpoints. Any ``map-aware'' discussion in earlier drafts is superseded by this repository state; map conditioning remains future work.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{EVALUATION METRICS}
+
+\subsection{ADE and FDE}
+
+Let $(\hat{x}_t, \hat{y}_t)$ and $(x_t, y_t)$ be prediction and ground truth at future index $t \in \{1,\ldots,F\}$.
+\[
+\mathrm{ADE} = \frac{1}{F} \sum_{t=1}^{F} \sqrt{(\hat{x}_t - x_t)^2 + (\hat{y}_t - y_t)^2}, \quad
+\mathrm{FDE} = \sqrt{(\hat{x}_F - x_F)^2 + (\hat{y}_F - y_F)^2}.
+\]
+
+\subsection{Qualitative Overlays}
+
+\texttt{code/evaluation/evaluate\_trajectory\_checkpoint.py} can export PNGs with past, ground-truth future, prediction, and (for \texttt{multi\_lstm}) masked neighbor polylines for visual inspection.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{EXPERIMENTAL SETUP}
+
+\subsection{Hardware and Automation}
+
+Training and evaluation were run on San Jos\'{e} State University HPC (\texttt{coe-hpc1}) with Waymo artifacts on shared scratch storage. We provide \texttt{scripts/run\_friday\_pipeline.sh} and \texttt{slurm/run\_friday\_pipeline.sbatch}; the shell script exports \texttt{PYTHONPATH} to the repository root so \texttt{code.*} imports resolve when invoking evaluation as a file path.
+
+\subsection{Representative Configuration}
+
+Unless otherwise noted for ablations: $P{=}10$, $F{=}20$, $K{=}12$, Smooth L1 loss, Adam $(10^{-3})$, hidden size 128 (with neighbor encoder 96 in multi-agent). Batch sizes and epoch counts follow the environment variables in the pipeline script (e.g., 12 epochs and batch 64/48 in a recent milestone run).
+
+\subsection{Reporting}
+
+We aggregate metrics with \texttt{scripts/plot\_model\_comparison.py}, which writes validation-loss and ADE/FDE comparison figures plus \texttt{metrics\_summary.csv} under each experiment's \texttt{comparison/} directory.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{RESULTS}
+
+\subsection{Held-Out Test Metrics}
+
+\tabref{tab:three_models} reports ADE/FDE on \texttt{data/infos\_test.pkl} for one completed three-model run (checkpoint directory \texttt{results/experiments/friday\_20260429\_230906/}), evaluated with identical window caps. Numbers are deterministic given the saved weights and split.
+
+\begin{table}[h]
+\caption{Test-set ADE/FDE (meters) for identical preprocessing.}
+\label{tab:three_models}
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Model & ADE (m) & FDE (m) \\
+\midrule
+LSTM baseline & 2.29 & 5.25 \\
+Transformer baseline & 2.72 & 5.84 \\
+Multi-agent LSTM & 2.48 & 5.81 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+On this run, the LSTM baseline achieved the lowest ADE and FDE among the three configurations; the Transformer and multi-agent models serve as instructive comparisons under the same data budget and optimization defaults. We emphasize that ranking can change with hyperparameter search, longer training, or full-window training without caps.
+
+\subsection{Validation Loss and Metric Bars}
+
+\figref{fig:val_loss} and \figref{fig:ade_fde} show seaborn-styled comparison plots generated by the plotting script for the same experiment directory.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{results/experiments/friday_20260429_230906/comparison/val_loss_comparison.png}
+    \caption{Validation Smooth-L1 loss vs.\ epoch for the three models.}
+    \label{fig:val_loss}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{results/experiments/friday_20260429_230906/comparison/ade_fde_comparison.png}
+    \caption{ADE and FDE comparison on the held-out test split.}
+    \label{fig:ade_fde}
+\end{figure}
+
+\subsection{Qualitative Example}
+
+\figref{fig:qual} shows an example LSTM qualitative panel (past, GT future, prediction) from the same experiment.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.88\linewidth]{results/experiments/friday_20260429_230906/lstm/qualitative_test/traj_000.png}
+    \caption{Example qualitative trajectory plot (LSTM): neighbors gray (multi-agent only), past black, GT green, prediction red, ego anchor blue.}
+    \label{fig:qual}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{DISCUSSION}
+
+\textbf{BEV vs.\ map.} Focusing on $(x,y)$ histories keeps the pipeline simple and debuggable but discards explicit road rules. Map-aware heads or losses would be a natural extension.
+
+\textbf{Multi-agent pooling.} Masked mean pooling is easy to train but cannot emphasize a single critical neighbor; attention or graph convolutions could replace the pooler.
+
+\textbf{Transformer data budget.} Under capped windows and default optimization, the Transformer did not outperform the LSTM; richer tuning (warmup, weight decay, longer training) may be required.
+
+\textbf{LiDAR storytelling.} Separate scripts simulate LiDAR BEV/3D playback and model rollout GIFs for presentations; they illustrate the sensing context but are not required for the core supervised $(x,y)$ metrics above.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{LIMITATIONS}
+
+\begin{itemize}
+    \item \textbf{No map conditioning} in the trained checkpoints.
+    \item \textbf{BEV $(x,y)$ only}; no full 3D box forecasting in the current loss.
+    \item \textbf{Deterministic single hypothesis}; no multimodal mixture outputs.
+    \item \textbf{Compute caps} (max windows per split) may bias metrics relative to full-dataset training.
+    \item \textbf{Class-imbalanced scenes} without reweighted sampling in the default trainer.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{FUTURE WORK}
+
+Raster or vector map encoders; multimodal output heads; graph/attention neighbor models; per-class metrics; integration with full Waymo Motion TFRecords; inference-time latency studies; and curriculum or contrastive objectives for rare classes.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusion}
+
+We documented and evaluated a practical Waymo-based BEV trajectory forecasting codebase with three transparent baselines---LSTM, Transformer, and multi-agent LSTM---under shared preprocessing, losses, and metrics. The repository, Slurm automation, and visualization utilities are intended as a reproducible course deliverable and a stepping stone toward map-aware and multimodal forecasting.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{ACKNOWLEDGMENTS}
+
+We thank the Waymo team for the Open Dataset and San Jos\'{e} State University for HPC resources. We acknowledge course staff feedback.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{APPENDIX: Repository Map}
+
+\begin{itemize}
+    \item \texttt{train/train\_trajectory\_model.py} --- unified training for \texttt{lstm}, \texttt{transformer}, \texttt{multi\_lstm}.
+    \item \texttt{code/models/} --- model definitions.
+    \item \texttt{code/data\_pipeline/} --- window builders and datasets.
+    \item \texttt{code/evaluation/} --- metrics and qualitative export.
+    \item \texttt{scripts/run\_friday\_pipeline.sh}, \texttt{slurm/run\_friday\_pipeline.sbatch} --- batch pipeline.
+    \item \texttt{scripts/plot\_model\_comparison.py} --- comparison figures.
+    \item \texttt{scripts/generate\_presentation\_assets\_slides05\_plus.py} --- slide assets.
+    \item \texttt{EDA.py} --- exploratory plots and CSV summaries.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{thebibliography}{99}
+
+\bibitem{waymo}
+Waymo LLC, ``Waymo Open Dataset,'' \url{https://waymo.com/open/}
+
+\bibitem{lstm}
+S. Hochreiter and J. Schmidhuber, ``Long short-term memory,'' \textit{Neural Computation}, vol.~9, no.~8, pp.~1735--1780, 1997.
+
+\bibitem{transformer}
+A. Vaswani et al., ``Attention is all you need,'' in \textit{Advances in Neural Information Processing Systems}, 2017.
+
+\end{thebibliography}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}

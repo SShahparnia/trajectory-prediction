@@ -99,7 +99,7 @@ python train/train_trajectory_model.py \
   --seed "${SEED}" \
   --out-dir "${MULTI_DIR}"
 
-python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
+python code/evaluation/evaluate_trajectory_checkpoint.py \
   --checkpoint "${LSTM_DIR}/best_model.pt" \
   --infos "${TEST_INFOS}" \
   --past-len "${PAST_LEN}" \
@@ -109,7 +109,7 @@ python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
   --viz-out-dir "${LSTM_DIR}/qualitative_test" \
   --num-viz 12
 
-python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
+python code/evaluation/evaluate_trajectory_checkpoint.py \
   --checkpoint "${TRANSFORMER_DIR}/best_model.pt" \
   --infos "${TEST_INFOS}" \
   --past-len "${PAST_LEN}" \
@@ -119,7 +119,7 @@ python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
   --viz-out-dir "${TRANSFORMER_DIR}/qualitative_test" \
   --num-viz 12
 
-python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
+python code/evaluation/evaluate_trajectory_checkpoint.py \
   --checkpoint "${MULTI_DIR}/best_model.pt" \
   --infos "${TEST_INFOS}" \
   --past-len "${PAST_LEN}" \

@@ -1,23 +1,20 @@
+#!/usr/bin/env python3
 """
 Train traditional ML models (Random Forest, XGBoost) on trajectory prediction
 using the real Waymo data pipeline.
 """
 
-import json
-import os
 import sys
+import json
 from pathlib import Path
 
-import joblib
 import numpy as np
+import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from xgboost import XGBRegressor
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
+sys.path.insert(0, str(Path(__file__).parent))
 from traj_code.data_pipeline.waymo_windows import build_xy_windows
 from traj_code.evaluation.metrics import ade, fde
 

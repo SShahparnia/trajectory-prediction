@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Sanity check: count entries in Waymo data on HPC.
 
