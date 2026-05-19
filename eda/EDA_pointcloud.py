@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Point-cloud EDA for preprocessed Waymo data.
 

@@ -1,26 +1,22 @@
 venv/
 .venv/
-#data/
 logs/
 results/
 *.log
 *.pyc
 __pycache__/
 .DS_Store
-code/__pycache__/
-train/__pycache__/
-scripts/__pycache__/
-evaluation/__pycache__/
-data_pipeline/__pycache__/
-feature_engineering/__pycache__/
-models/__pycache__/
-utils/__pycache__/
-slurm/__pycache__/
-docs/__pycache__/
-CMPE-257 Paper Presentation/
 
-# Presentation slide assets & generators (local only)
-docs/presentation_assets/
-docs/presentation_assets_transparent/
-scripts/generate_slide03_slide04_visuals.py
-scripts/generate_presentation_assets_slides05_plus.py
+traj_code/**/__pycache__/
+train/**/__pycache__/
+scripts/**/__pycache__/
+eda/**/__pycache__/
+slurm/**/__pycache__/
+
+# Local notes, reports, and download guides (not part of the code release)
+docs/
+waymo-data-full-download.md
+REMAINING_PROJECT_STEPS.md
+trajectory.tex
+trajectory_preview.tex
+CMPE-257 Paper Presentation/
