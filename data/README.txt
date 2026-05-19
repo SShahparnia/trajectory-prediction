@@ -13,4 +13,4 @@ Total frames combined: 4761
 Split is by lidar_sequence (whole segments) to avoid leakage.
 Point cloud paths inside each info still reference /scratch/... originals.
 
-Point training code at these pickles when you are ready (not wired yet).
+Point training and EDA scripts at these pickles (see repo README.md).

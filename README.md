@@ -1,8 +1,12 @@
 # Trajectory Prediction (Waymo)
 
-Code for building trajectory windows from processed Waymo metadata, training forecasting models, and evaluating with ADE/FDE plus qualitative rollouts.
+**Bird's-Eye Trajectory Forecasting on Waymo** — CMPE project, San Jose State University.
 
-The repo is organized around a small Python package (`traj_code/`), thin entry-point scripts (`train/`, `scripts/`, `eda/`), and Slurm helpers for HPC runs. Model checkpoints and plots are written under `results/` (gitignored).
+**Team:** Shervan Shahparnia, Aaron Sam, Bhavdeep Randhawa, Atilla Sayin (Department of Computer Engineering, SJSU).
+
+We built an end-to-end pipeline on the [Waymo Open Dataset](https://waymo.com/open/) that turns processed sequences into fixed-horizon bird's-eye-view (BEV) trajectory windows, then trains and evaluates several forecasters under the same splits and metrics (ADE/FDE). Deep models include LSTM, Transformer, and Multi-Agent LSTM; traditional baselines are Random Forest and XGBoost on engineered kinematic features. Deep learning consistently beats the classical baselines in our experiments, with Multi-Agent LSTM strongest when neighbor context is used. The work also reflects the practical cost of large driving datasets: heavy preprocessing and long GPU training on HPC.
+
+This repository holds the code, Slurm jobs, and split metadata pickles. Checkpoints and figures live under `results/` (gitignored). Layout: core library `traj_code/`, entry points in `train/`, `scripts/`, and `eda/`.
 
 ---
 
@@ -36,19 +40,21 @@ pip install -r requirements.txt
 export PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-Dependencies are listed in `requirements.txt` (PyTorch, scikit-learn, XGBoost for the optional traditional baseline, matplotlib, etc.).
+Dependencies are listed in `requirements.txt` (PyTorch, scikit-learn, XGBoost, matplotlib, etc.).
 
 ### Data
 
-Training expects processed Waymo **infos** pickles (`*_infos_*.pkl`), not raw TFRecords. This repo ships split metadata under `data/`:
+**Waymo processed data is not included in this repository.** You must download or mount it yourself (course scratch storage, your own disk, etc.). What *is* included are split **infos** pickles under `data/` that reference frames on shared storage.
+
+Training uses processed Waymo **infos** pickles (`*_infos_*.pkl`), not raw TFRecords:
 
 - `data/infos_train.pkl`
 - `data/infos_val.pkl`
 - `data/infos_test.pkl`
 
-Each entry points at LiDAR `.npy` paths on shared storage (e.g. `/scratch/.../waymo_processed_data_v0_5_0/`). You need that tree mounted to run LiDAR EDA or BEV simulations; trajectory training only needs the pickles and valid box annotations inside them.
+Each entry may list LiDAR `.npy` paths (e.g. under `waymo_processed_data_v0_5_0/` on `/scratch/...`). You need that tree available locally or mounted for point-cloud EDA and BEV simulations. Trajectory training from the shipped pickles only needs the pickles and the box annotations inside them.
 
-To rebuild splits from full HPC train+val infos:
+To rebuild splits from full HPC train+val infos (requires those files on your machine):
 
 ```bash
 python scripts/build_expanded_data_splits.py \
@@ -62,7 +68,7 @@ python scripts/build_expanded_data_splits.py \
 
 ### Exploratory analysis
 
-Object-level stats and plots:
+Object-level stats and plots (uses shipped `data/infos_*.pkl` only):
 
 ```bash
 python eda/EDA.py \
@@ -71,12 +77,12 @@ python eda/EDA.py \
   --out-dir results/eda_train_500
 ```
 
-Point-cloud EDA (requires processed `.npy` on disk):
+Point-cloud EDA (requires your own processed `.npy` tree; replace `--processed-root` with your path):
 
 ```bash
 python eda/EDA_pointcloud.py \
   --infos data/infos_train.pkl \
-  --processed-root /scratch/lts-data/cmpe249-fa22/Waymo132/waymo_processed_data_v0_5_0 \
+  --processed-root /path/to/waymo_processed_data_v0_5_0 \
   --max-samples 200 \
   --out-dir results/pointcloud_eda_train_200
 ```
@@ -118,13 +124,13 @@ python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
 
 Single-agent LSTM checkpoints from `train_lstm_baseline.py` can use `traj_code/evaluation/evaluate_checkpoint.py` instead.
 
-### Optional: traditional ML baselines
+### Traditional ML baselines (Random Forest and XGBoost)
 
 ```bash
 python train/train_traditional_models.py
 ```
 
-Trains Random Forest and XGBoost on engineered features; writes under `results/train_random_forest/` and `results/train_xgboost/`.
+Trains Random Forest and XGBoost on 66 engineered kinematic features from `data/infos_*.pkl` (same windowing as the deep models). Writes under `results/train_random_forest/` and `results/train_xgboost/`.
 
 ### Comparison plots and simulations
 
@@ -135,20 +141,18 @@ python scripts/plot_model_comparison.py \
   --out-dir results/experiments/comparison
 ```
 
-LiDAR BEV playback and model rollout GIFs: see `scripts/simulate_lidar_bev.py` and `scripts/simulate_model_rollout_bev.py`.
+LiDAR BEV playback and model rollout GIFs (require processed LiDAR on disk): `scripts/simulate_lidar_bev.py` and `scripts/simulate_model_rollout_bev.py`.
 
 ### HPC (Slurm)
 
 - Stage 1 (LSTM train + val/test eval): `./slurm/submit_stage1_pipeline.sh` — see `slurm/README.md`
 - Full three-model pipeline (train + test eval + comparison): `sbatch slurm/run_friday_pipeline.sbatch` or `bash scripts/run_friday_pipeline.sh`
 
-Set `PROJECT_DIR` to your clone path if it is not the default in the sbatch files.
+Slurm jobs default to course scratch paths for infos and `PROJECT_DIR`; override those in `slurm/pipeline_defaults.env` or at submit time. Set `PROJECT_DIR` in `scripts/run_friday_pipeline.sh` if your clone path differs.
 
 ---
 
 ## Reproducibility
-
-What you can reproduce from this repo alone:
 
 | Artifact | How |
 |----------|-----|
@@ -160,11 +164,17 @@ What you can reproduce from this repo alone:
 | EDA figures | `eda/EDA.py`, `eda/EDA_pointcloud.py` |
 | RF / XGBoost baselines | `train/train_traditional_models.py` |
 
-**You must retrain to obtain checkpoints** — `results/` is not versioned. For paper-grade numbers, use full window counts (avoid tiny `--max-*-windows` debug settings) and fix `--seed` (default `42` in trainers).
+### `results/` and external data
 
-**Not wired into the default Friday pipeline** (but implemented in code): `multi_lstm_attn`, `lstm_multimodal`. Train them explicitly with `train/train_trajectory_model.py --model-type ...`.
+**`results/` is not in git.** A fresh clone has no checkpoints, metrics, EDA plots, or animations. To see them, either run the commands above or copy an existing `results/` tree from HPC or another machine.
 
-**External requirements:** processed Waymo data on shared storage; GPU recommended for deep models; LiDAR scripts need `.npy` frames at paths referenced in the infos pickles.
+**Additional Waymo assets are your responsibility** (see **Data**): full processed LiDAR (`.npy` under `waymo_processed_data_v0_5_0/`), and optionally the larger HPC train/val infos for split rebuilds. Point-cloud EDA, BEV simulations, and LiDAR-based scripts need that data; training from the shipped `data/infos_*.pkl` does not. A GPU is recommended for deep-model training.
+
+---
+
+## AI usage disclaimer
+
+We used [Cursor](https://cursor.com) only as an editor assistant for **repository housekeeping**: reorganizing folders and file layout, and editing this README for clarity and structure. Cursor was **not** used to design experiments, write model or training logic, generate research results, or author project reports. All trajectory models, data pipelines, evaluation code, and scientific conclusions are the work of the project team.
 
 ---
 
