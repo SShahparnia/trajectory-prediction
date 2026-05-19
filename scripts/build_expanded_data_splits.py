@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Build expanded train/val/test metadata under data/ from ALL frames in the
 processed Waymo infos pickles (train + val combined), split by SEQUENCE so the

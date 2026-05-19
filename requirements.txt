@@ -1,8 +1,9 @@
 numpy
 pandas
 torch
-tensorflow
 scikit-learn
+joblib
+xgboost
 matplotlib
 seaborn>=0.11
 jupyter
