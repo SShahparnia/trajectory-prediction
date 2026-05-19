@@ -1,8 +1,12 @@
 # Trajectory Prediction (Waymo)
 
-Code for building trajectory windows from processed Waymo metadata, training forecasting models, and evaluating with ADE/FDE plus qualitative rollouts.
+**Bird's-Eye Trajectory Forecasting on Waymo** — CMPE project, San Jose State University.
 
-The repo is organized around a small Python package (`traj_code/`), thin entry-point scripts (`train/`, `scripts/`, `eda/`), and Slurm helpers for HPC runs. Checkpoints, metrics, and plots are written under `results/` (gitignored).
+**Team:** Shervan Shahparnia, Aaron Sam, Bhavdeep Randhawa, Atilla Sayin (Department of Computer Engineering, SJSU).
+
+We built an end-to-end pipeline on the [Waymo Open Dataset](https://waymo.com/open/) that turns processed sequences into fixed-horizon bird's-eye-view (BEV) trajectory windows, then trains and evaluates several forecasters under the same splits and metrics (ADE/FDE). Deep models include LSTM, Transformer, and Multi-Agent LSTM; traditional baselines are Random Forest and XGBoost on engineered kinematic features. Deep learning consistently beats the classical baselines in our experiments, with Multi-Agent LSTM strongest when neighbor context is used. The work also reflects the practical cost of large driving datasets: heavy preprocessing and long GPU training on HPC.
+
+This repository holds the code, Slurm jobs, and split metadata pickles. Checkpoints and figures live under `results/` (gitignored). Layout: core library `traj_code/`, entry points in `train/`, `scripts/`, and `eda/`.
 
 ---
 
@@ -36,7 +40,7 @@ pip install -r requirements.txt
 export PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}"
 ```
 
-Dependencies are listed in `requirements.txt` (PyTorch, scikit-learn, XGBoost for the optional traditional baseline, matplotlib, etc.).
+Dependencies are listed in `requirements.txt` (PyTorch, scikit-learn, XGBoost, matplotlib, etc.).
 
 ### Data
 
@@ -120,13 +124,13 @@ python traj_code/evaluation/evaluate_trajectory_checkpoint.py \
 
 Single-agent LSTM checkpoints from `train_lstm_baseline.py` can use `traj_code/evaluation/evaluate_checkpoint.py` instead.
 
-### Optional: traditional ML baselines
+### Traditional ML baselines (Random Forest and XGBoost)
 
 ```bash
 python train/train_traditional_models.py
 ```
 
-Trains Random Forest and XGBoost on engineered features from `data/infos_*.pkl`; writes under `results/train_random_forest/` and `results/train_xgboost/`.
+Trains Random Forest and XGBoost on 66 engineered kinematic features from `data/infos_*.pkl` (same windowing as the deep models). Writes under `results/train_random_forest/` and `results/train_xgboost/`.
 
 ### Comparison plots and simulations
 
