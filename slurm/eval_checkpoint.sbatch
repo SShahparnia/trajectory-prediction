@@ -26,7 +26,7 @@ echo "Evaluating checkpoint"
 echo "CHECKPOINT=${CHECKPOINT}"
 echo "INFOS=${INFOS}"
 
-python code/evaluation/evaluate_checkpoint.py \
+python traj_code/evaluation/evaluate_checkpoint.py \
   --checkpoint "${CHECKPOINT}" \
   --infos "${INFOS}" \
   --past-len "${PAST_LEN}" \

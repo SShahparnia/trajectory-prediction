@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simulate a model rollout on a random (or chosen) trajectory window sample.
 
